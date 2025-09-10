@@ -1,29 +1,10 @@
 # NMediaPlayer
-
-This template should help get you started developing with Vue 3 in Vite.
-
-## Recommended IDE Setup
-
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
+this is a media player that runs with capacitor and vuejs framework
+# Dependencies
+to run this application you need to install npm, java and also android studio just to deploy this on your mobile.
+Then you can simply run the application by double clicking on build.bat or by typing in the command
 ```sh
-npm install
+  build.bat
 ```
-
-### Compile and Hot-Reload for Development
-
-```sh
-npm run dev
-```
-
-### Compile and Minify for Production
-
-```sh
-npm run build
-```
+on a cmd opened in the root directory.
+then run the application in android studio. For every update sync the changes with android studio by rebuilding the application entirely
