@@ -46,7 +46,7 @@ import pauseIcon from '@/assets/PAUSE.png'
 import playIcon from '@/assets/PLAY.png'
 import rightArrowIcon from '@/assets/RIGHT_ARROW.png'
 import leftArrowIcon from '@/assets/LEFT_ARROW.png'
-import ReturnIcon from '@/assets/RETURN.png'
+import { KeepAwake } from '@capacitor-community/keep-awake'
 
 export default {
   name: "MusicPlayerPlaylist",
@@ -71,7 +71,6 @@ export default {
       playIcon,
       rightArrowIcon,
       leftArrowIcon,
-      ReturnIcon,
     }
   },
   computed:{
@@ -223,9 +222,17 @@ export default {
       this.$emit('returnToList'); 
     }
   },
+  mounted() {
+    KeepAwake.keepAwake().catch(error => {
+      console.error('Errore nel mantenere lo schermo acceso:', error);
+    });
+  },
   beforeUnmount() {
     if (this.intervalId) clearInterval(this.intervalId);
-  },
+    KeepAwake.allowSleep().catch(error => {
+      console.error('Errore nel permettere lo spegnimento dello schermo:', error);
+    });
+  }
 }
 </script>
 
