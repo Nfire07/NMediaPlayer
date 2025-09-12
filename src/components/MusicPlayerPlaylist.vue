@@ -56,13 +56,17 @@ export default {
       default: () => [],
     },
     initialIndex: {
-        type: Number,
-        default: 0,
+      type: Number,
+      default: 0,
+    },
+    isShuffleModeOn: {
+      type: Boolean,
+      default: false,
     }
   },
   data() {
     return {
-      currentIndex: this.initialIndex,
+      currentSongIndex: this.initialIndex,  // indice corrente nella lista
       isPlaying: false,
       duration: 0,
       currentTime: 0,
@@ -73,47 +77,53 @@ export default {
       leftArrowIcon,
     }
   },
-  computed:{
+  computed: {
     currentSong() {
-      return this.songs[this.currentIndex] || null;
+      return this.songs[this.currentSongIndex] || null;
     },
     currentIcon() {
       return this.isPlaying ? this.pauseIcon : this.playIcon;
     },
+    // Pulsante "indietro" abilitato solo in modalità lineare, se non siamo al primo brano
     hasPrev() {
-      return this.currentIndex > 0;
+      return !this.isShuffleModeOn && this.currentSongIndex > 0;
     },
+    // Pulsante "avanti" abilitato solo in modalità lineare se ci sono brani dopo, o sempre attivo in shuffle (ma non “indietro”)
     hasNext() {
-      return this.currentIndex < this.songs.length - 1;
+      if (this.isShuffleModeOn) {
+        // in shuffle sempre abilitiamo "avanti" se ci sono almeno 2 canzoni
+        return this.songs.length > 1;
+      } else {
+        return this.currentSongIndex < this.songs.length - 1;
+      }
     }
   },
   watch: {
-    initialIndex(newVal) {
-        this.currentIndex = newVal;
-    },
     songs: {
-        immediate: true,
-        handler(newSongs) {
+      immediate: true,
+      handler(newSongs) {
         if (newSongs.length > 0) {
-            if(this.currentIndex >= newSongs.length) this.currentIndex = 0;
-            this.playSong(this.songs[this.currentIndex].path);
+          // se l'indice corrente è fuori dalla nuova lista
+          if (this.currentSongIndex >= newSongs.length) {
+            this.currentSongIndex = 0;
+          }
+          // partire subito dal brano corrente
+          this.playSong(this.songs[this.currentSongIndex].path);
         } else {
-            this.stop();
+          this.stop();
         }
-        },
-    },
-    currentIndex(newIndex) {
-        if (this.songs.length > 0 && this.songs[newIndex]) {
-        this.playSong(this.songs[newIndex].path);
-        }
+      },
     }
-},
+  },
   methods: {
     async playSong(path) {
       try {
+        const idx = this.songs.findIndex(song => song.path === path);
+        if (idx !== -1) {
+          this.currentSongIndex = idx;
+        }
         await MediaPlugin.stop();
         await MediaPlugin.play({ path });
-
         this.isPlaying = true;
         this.currentTime = 0;
 
@@ -122,28 +132,30 @@ export default {
 
         this.startProgress();
       } catch (e) {
-        alert("An Error occured while playing " + e.message);
+        alert("An error occurred while playing: " + e.message);
       }
     },
+
     startProgress() {
-        if (this.intervalId) clearInterval(this.intervalId);
+      if (this.intervalId) clearInterval(this.intervalId);
 
-        this.intervalId = setInterval(async () => {
-            try {
-            const status = await MediaPlugin.getPlaybackStatus();
-            this.currentTime = status.currentTime || 0;
-            this.isPlaying = status.isPlaying;
+      this.intervalId = setInterval(async () => {
+        try {
+          const status = await MediaPlugin.getPlaybackStatus();
+          this.currentTime = status.currentTime || 0;
+          this.isPlaying = status.isPlaying;
 
-            if (this.duration > 0 && this.currentTime >= this.duration - 0.5) {
-                clearInterval(this.intervalId); 
-                this.currentTime = this.duration;
-                await this.nextSong();
-            }
-            } catch (e) {
-            console.error("Playback status error:", e.message);
-            }
-        }, 500);
+          if (this.duration > 0 && this.currentTime >= this.duration - 0.5) {
+            clearInterval(this.intervalId);
+            this.currentTime = this.duration;
+            await this.nextSong();
+          }
+        } catch (e) {
+          console.error("Playback status error:", e.message);
+        }
+      }, 500);
     },
+
     async stop() {
       if (this.intervalId) clearInterval(this.intervalId);
       this.isPlaying = false;
@@ -151,10 +163,10 @@ export default {
       this.duration = 0;
       await MediaPlugin.stop();
     },
+
     async togglePlayPause() {
       try {
         if (!this.currentSong) return;
-
         if (this.isPlaying) {
           await MediaPlugin.pause();
           this.isPlaying = false;
@@ -177,9 +189,9 @@ export default {
         alert("Playback error: " + e.message);
       }
     },
+
     async seek() {
       const position = Math.floor(this.currentTime);
-
       if (
         typeof position !== "number" ||
         isNaN(position) ||
@@ -189,44 +201,74 @@ export default {
         console.warn("Invalid seek position:", position);
         return;
       }
-
       try {
-        await MediaPlugin.seek({ position }); 
+        await MediaPlugin.seek({ position });
       } catch (e) {
         console.error("Seek failed:", e.message);
       }
     },
+
     formatTime(seconds) {
-      const m = Math.floor(seconds / 60)
-        .toString()
-        .padStart(2, "0");
-      const s = Math.floor(seconds % 60)
-        .toString()
-        .padStart(2, "0");
+      const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const s = Math.floor(seconds % 60).toString().padStart(2, "0");
       return `${m}:${s}`;
     },
+
     async nextSong() {
-        if (this.hasNext) {
-            this.currentIndex++;
+      // se non ci sono canzoni, non fare nulla
+      if (this.songs.length === 0) return;
+
+      if (this.isShuffleModeOn) {
+        // modalita shuffle
+        if (this.songs.length === 1) {
+          // solo una canzone: resta quella
+          await this.playSong(this.songs[0].path);
         } else {
-            this.currentIndex = 0;
+          let newIndex;
+          do {
+            newIndex = Math.floor(Math.random() * this.songs.length);
+          } while (newIndex === this.currentSongIndex);
+          this.currentSongIndex = newIndex;
+          await this.playSong(this.songs[newIndex].path);
         }
-    },
-    async prevSong() {
-      if (this.hasPrev) {
-        this.currentIndex--;
+      } else {
+        // modalita lineare
+        if (this.currentSongIndex < this.songs.length - 1) {
+          this.currentSongIndex++;
+        } else {
+          // facciamo ripartire o fermare? 
+          // Se vuoi ricominciare da capo:
+          this.currentSongIndex = 0;
+        }
+        await this.playSong(this.songs[this.currentSongIndex].path);
       }
     },
+
+    async prevSong() {
+      // pulsante “indietro” disabilitato in shuffle, quindi controlla la computed hasPrev
+      if (!this.hasPrev) return;
+
+      // solo modalità lineare
+      if (this.currentSongIndex > 0) {
+        this.currentSongIndex--;
+      } else {
+        this.currentSongIndex = 0;
+      }
+      await this.playSong(this.songs[this.currentSongIndex].path);
+    },
+
     handleReturnToList() {
-      this.stop(); 
-      this.$emit('returnToList'); 
+      this.stop();
+      this.$emit('returnToList');
     }
   },
+
   mounted() {
     KeepAwake.keepAwake().catch(error => {
       console.error('Errore nel mantenere lo schermo acceso:', error);
     });
   },
+
   beforeUnmount() {
     if (this.intervalId) clearInterval(this.intervalId);
     KeepAwake.allowSleep().catch(error => {

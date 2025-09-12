@@ -13,8 +13,9 @@
             class="playlist-item"
           >
             {{ playlist.name }}
-            <button class="open-button" @click="openPlaylist(playlist)">Open</button>
-            <button class="remove-button" @click="removePlaylist(playlist.name)">RM</button>
+            <button class="open-button" @click="openPlaylist(playlist)"><img :src="playLineIcon" class="button-icon"></button>
+            <button class="remove-button" @click="removePlaylist(playlist.name)"><img :src="trashIcon" class="button-icon"></button>
+            <button class="shuffle-button" @click="playInShuffleMode(playlist)"><img :src="shuffleIcon" class="button-icon"></button>
           </li>
         </ul>
       </div>
@@ -52,17 +53,17 @@
       </button>
     </template>
 
-    <!-- Player visibile -->
     <div v-else class="player-wrapper">
       <MusicPlayerPlaylist
         :songs="playlistSongs"
         :initialIndex="currentPlayingIndex"
+        :isShuffleModeOn="isShuffleModeOn"
         @returnToList="closePlayer"
       />
     </div>
 
     <button v-if="showPlayer" class="back-button" @click="closePlayer">
-      Torna alla lista brani
+      Return to songs list
     </button>
   </div>
 </template>
@@ -70,6 +71,9 @@
 <script>
 import { MediaPlugin } from '@/plugins/MediaPlugin'
 import MusicPlayerPlaylist from './MusicPlayerPlaylist.vue'
+import trashIcon from '@/assets/TRASH.png'
+import shuffleIcon from '@/assets/SHUFFLE.png'
+import playLineIcon from '@/assets/PLAY_LINE.png'
 
 export default {
   name: "Playlists",
@@ -87,23 +91,29 @@ export default {
       dragQueueId: null,
       showPlayer: false,
       currentPlayingIndex: 0,
+      isShuffleModeOn:false,
+      trashIcon,
+      shuffleIcon,
+      playLineIcon,
     }
   },
   async mounted() {
     this.loading = true
     try {
-      const response = await MediaPlugin.listPlaylists()
-      this.playlists = response.playlists || []
+      const response = await MediaPlugin.listPlaylists();
+      this.playlists = response.playlists || [];
     } catch (err) {
-      this.error = err.message || "Failed to load playlists"
-      console.error(err)
+      this.error = err.message || "Failed to load playlists";
+      console.error(err);
+      alert(this.error);
     } finally {
-      this.loading = false
+      this.loading = false;
     }
   },
   methods: {
     playSongAtIndex(index) {
       this.currentPlayingIndex = index
+      this.isShuffleModeOn = false;
       this.showPlayer = true
     },
     closePlayer() {
@@ -126,6 +136,17 @@ export default {
         alert(err.message)
       } finally {
         this.songsLoading = false
+      }
+    },
+    async playInShuffleMode(playlist) {
+      this.isShuffleModeOn = true;
+      await this.openPlaylist(playlist);
+      if (this.playlistSongs.length > 0) {
+        const randomIndex = Math.floor(Math.random() * this.playlistSongs.length);
+        this.currentPlayingIndex = randomIndex;
+        this.showPlayer = true;
+      } else {
+        alert("This playlist has no songs to shuffle.");
       }
     },
     async removePlaylist(name) {
@@ -223,7 +244,7 @@ export default {
   background: rgba(255, 255, 255, 0.15);
   font-weight: 600;
   display: flex;
-  justify-content: space-between;
+  justify-content: space-evenly;
   align-items: center;
 }
 
@@ -241,19 +262,14 @@ export default {
   color: #2c2c2c;
 }
 
-.open-button:hover {
-  background: #23f9d5;
-  color: #000;
-}
-
 .remove-button {
   background: linear-gradient(135deg, #ff4e51a1, #f9d52397);
   color: #2c2c2c;
 }
 
-.remove-button:hover {
-  background: #ff4e51;
-  color: #fff;
+.shuffle-button{
+  background:linear-gradient(30deg,#c131c4,#9e04a0);
+  color:#2c2c2c;
 }
 
 .songs-list {
@@ -358,5 +374,9 @@ export default {
   width: 100%;
   padding: 1rem;
   box-sizing: border-box;
+}
+.button-icon{
+  width:30px;
+  height:30px;
 }
 </style>
