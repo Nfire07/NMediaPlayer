@@ -1,0 +1,23 @@
+#!/bin/bash
+
+echo ============================
+echo 1. Building Vue project...
+echo ============================
+npm run build
+
+echo ============================
+echo 2. Copying to Android...
+echo ============================
+npx cap copy android
+
+echo ============================
+echo 3. Opening Android Studio...
+echo ============================
+npx cap sync android 
+npx cap open android
+
+echo ============================
+echo  Build Completed Succesfully
+echo ============================
+exit 0
+
