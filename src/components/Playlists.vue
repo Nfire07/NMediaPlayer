@@ -1,20 +1,16 @@
 <template>
   <div class="content">
     <template v-if="!showPlayer">
-      <h2 class="page-title" v-if="!selectedPlaylist">Your Playlists <i class="bi bi-view-list"></i></h2>
+      <h2 class="page-title" v-if="!selectedPlaylist">Your Playlists  <i class="bi bi-view-list"></i></h2>
 
       <div v-if="!selectedPlaylist">
         <div v-if="loading" class="loading-text">Loading playlists...</div>
         <div v-else-if="playlists.length === 0" class="no-playlists">No playlists found.</div>
         <ul v-else class="playlist-list">
-          <li
-            v-for="playlist in playlists"
-            :key="playlist.path"
-            class="playlist-item"
-          >
-            {{ playlist.name }}
-            <button class="open-button" @click="openPlaylist(playlist)"><i class="bi bi-arrow-left"></i></button>
-            <button class="remove-button" @click="removePlaylist(playlist.name)"><i class="bi bi-trash"></i></button>
+          <li v-for="playlist in playlists" :key="playlist.path" class="playlist-item">
+            <span class="playlist-inline-title">{{ playlist.name }}</span>
+            <button class="open-button" @click="openPlaylist(playlist)"><i class="bi bi-arrow-right"></i></button>
+            <button class="remove-button" @click="removePlaylist(playlist.name)"><i class="bi bi-trash-fill"></i></button>
             <button class="shuffle-button" @click="playInShuffleMode(playlist)"><i class="bi bi-shuffle"></i></button>
           </li>
         </ul>
@@ -37,9 +33,7 @@
             @dragover.prevent
             @drop="drop($event, song.queueId)"
           >
-            <div class="queue-id">
-              {{ song.queueId !== undefined ? song.queueId : '–' }}
-            </div>
+            <div class="queue-id">{{ song.queueId !== undefined ? song.queueId : '–' }}</div>
             <div class="song-info">
               <div class="song-title">{{ song.title }}</div>
               <div class="song-artist">{{ song.artist }}</div>
@@ -49,7 +43,7 @@
       </div>
 
       <button class="back-button" @click="goBack">
-        {{ selectedPlaylist ? 'Back to playlists' : 'Return to menu' }}
+        <i class="bi bi-arrow-left"></i> {{ selectedPlaylist ? 'Back to playlists' : 'Return to menu' }}
       </button>
     </template>
 
@@ -58,43 +52,35 @@
         :songs="playlistSongs"
         :initialIndex="currentPlayingIndex"
         :isShuffleModeOn="isShuffleModeOn"
-        @returnToList="closePlayer"
       />
     </div>
 
     <button v-if="showPlayer" class="back-button" @click="closePlayer">
-      Return to songs list
+      <i class="bi bi-arrow-left"></i> Return to songs list
     </button>
   </div>
 </template>
 
 <script>
 import { MediaPlugin } from '@/plugins/MediaPlugin'
+import { useMusicPlayerStore } from '@/stores/musicPlayerStore.js'
 import MusicPlayerPlaylist from './MusicPlayerPlaylist.vue'
-import trashIcon from '@/assets/TRASH.png'
-import shuffleIcon from '@/assets/SHUFFLE.png'
-import playLineIcon from '@/assets/PLAY_LINE.png'
 
 export default {
   name: "Playlists",
-  components: {
-    MusicPlayerPlaylist
-  },
+  components: { MusicPlayerPlaylist },
   data() {
     return {
+      playerStore: useMusicPlayerStore(),
       playlists: [],
       loading: false,
-      error: null,
       selectedPlaylist: null,
       playlistSongs: [],
       songsLoading: false,
       dragQueueId: null,
       showPlayer: false,
       currentPlayingIndex: 0,
-      isShuffleModeOn:false,
-      trashIcon,
-      shuffleIcon,
-      playLineIcon,
+      isShuffleModeOn: false,
     }
   },
   async mounted() {
@@ -103,51 +89,30 @@ export default {
       const response = await MediaPlugin.listPlaylists();
       this.playlists = response.playlists || [];
     } catch (err) {
-      this.error = err.message || "Failed to load playlists";
-      console.error(err);
-      alert(this.error);
+      alert("Failed to load playlists: " + err.message);
     } finally {
       this.loading = false;
     }
   },
   methods: {
     async playSongAtIndex(index) {
-      try {
-        await this.requestLocation()
-      } catch (err) {
-        console.error('Permission error:', err)
-        alert('Location permission is required to play media in the foreground.')
-        return
-      }
-      
+      // Non è più strettamente necessario chiedere la location per l'audio, 
+      // ma se serve per altre feature la lasciamo
       this.currentPlayingIndex = index
       this.isShuffleModeOn = false
       this.showPlayer = true
     },
-    async requestLocation() {
-      const { Geolocation } = await import('@capacitor/geolocation')
-      const permission = await Geolocation.requestPermissions()
-      if (permission.location !== 'granted') {
-        throw new Error('Location permission denied')
-      }
-      return true
-    },
-    closePlayer() {
+    async closePlayer() {
       this.showPlayer = false
-      this.currentPlayingIndex = 0
-      MediaPlugin.stop().catch(err => {
-        console.error("Error stopping playback:", err)
-      })
+      await this.playerStore.stop() // Ferma tutto correttamente tramite store
     },
     async openPlaylist(playlist) {
       this.selectedPlaylist = playlist
       this.songsLoading = true
-
       try {
         const response = await MediaPlugin.getPlaylistSongs({ path: playlist.path })
         this.playlistSongs = response.songs || []
       } catch (err) {
-        console.error("Failed to load songs for playlist:", err)
         this.playlistSongs = []
         alert(err.message)
       } finally {
@@ -155,27 +120,18 @@ export default {
       }
     },
     async playInShuffleMode(playlist) {
-      try {
-        await this.requestLocation()
-      } catch (err) {
-        console.error('Permission error:', err)
-        alert('Location permission is required to play media in the foreground.')
-        return
-      }
-      
-      this.isShuffleModeOn = true
       await this.openPlaylist(playlist)
       if (this.playlistSongs.length > 0) {
         const randomIndex = Math.floor(Math.random() * this.playlistSongs.length)
         this.currentPlayingIndex = randomIndex
+        this.isShuffleModeOn = true
         this.showPlayer = true
       } else {
-        alert("This playlist has no songs to shuffle.")
+        alert("Playlist empty.")
       }
     },
     async removePlaylist(name) {
-      if (!confirm(`Are you sure you want to delete the playlist "${name}"?`)) return
-
+      if (!confirm(`Delete "${name}"?`)) return
       try {
         await MediaPlugin.removePlaylist({ name })
         this.playlists = this.playlists.filter(p => p.name !== name)
@@ -184,8 +140,7 @@ export default {
           this.playlistSongs = []
         }
       } catch (err) {
-        console.error("Failed to remove playlist:", err)
-        alert(err.message || "Could not remove playlist")
+        alert(err.message)
       }
     },
     goBack() {
@@ -203,19 +158,12 @@ export default {
     drop(event, targetQueueId) {
       event.preventDefault()
       if (this.dragQueueId === null || this.dragQueueId === targetQueueId) return
-
       const dragIndex = this.playlistSongs.findIndex(s => s.queueId === this.dragQueueId)
       const targetIndex = this.playlistSongs.findIndex(s => s.queueId === targetQueueId)
-
       if (dragIndex < 0 || targetIndex < 0) return
-
       const draggedSong = this.playlistSongs.splice(dragIndex, 1)[0]
       this.playlistSongs.splice(targetIndex, 0, draggedSong)
-
-      this.playlistSongs.forEach((song, index) => {
-        song.queueId = index + 1
-      })
-
+      this.playlistSongs.forEach((song, index) => { song.queueId = index + 1 })
       this.dragQueueId = null
       this.updateQueueOrder()
     },
@@ -223,14 +171,10 @@ export default {
       try {
         await MediaPlugin.updatePlaylistQueue({
           path: this.selectedPlaylist.path,
-          queue: this.playlistSongs.map(song => ({
-            queueId: song.queueId,
-            path: song.path,
-          })),
+          queue: this.playlistSongs.map(song => ({ queueId: song.queueId, path: song.path })),
         })
-        console.log("Queue order updated successfully")
       } catch (err) {
-        alert(`Failed to update queue order: ${err.message}`)
+        console.error(err)
       }
     }
   }
@@ -238,6 +182,13 @@ export default {
 </script>
 
 <style scoped>
+.playlist-inline-title{
+  max-width: 100px;
+  text-wrap: nowrap;
+  font-weight: 800;
+  overflow: hidden;
+}
+
 .content {
   width: 100%;
   height: 90vh;
@@ -258,7 +209,7 @@ export default {
   padding: 0;
   margin: 0;
   max-height: 50vh;
-  overflow-y: auto;
+  overflow-y: scroll;
   width: 100%;
 }
 
@@ -273,7 +224,8 @@ export default {
 }
 
 .open-button,
-.remove-button {
+.remove-button,
+.shuffle-button {
   margin-left: 0.5rem;
   padding: 0.25rem 0.5rem;
   border: none;
@@ -301,7 +253,7 @@ export default {
   padding: 0 1.5rem;
   margin: 0;
   max-height: 80vh;
-  overflow-y: auto;
+  overflow-y: scroll;
   width: 100%;
   box-sizing: border-box;
 }
@@ -363,6 +315,8 @@ export default {
   text-align: center;
   margin-top: 2rem;
   margin-bottom: 1rem;
+  max-width: 300px;
+  overflow: hidden;
 }
 
 .back-button {

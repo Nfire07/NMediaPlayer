@@ -1,15 +1,21 @@
 package com.nmediaplayer.mediaplayer.plugins;
 
+import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.MediaStore;
+import android.util.Log;
+
+import androidx.core.content.ContextCompat;
+
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -25,96 +31,64 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.util.Iterator;
 
+import com.getcapacitor.annotation.Permission;
 import com.nmediaplayer.mediaplayer.MusicPlayerService;
-
-@CapacitorPlugin(name = "MediaPlugin")
+@CapacitorPlugin(
+    name = "MediaPlugin",
+    permissions = {
+        @Permission(
+            alias = "notifications",
+            strings = { Manifest.permission.POST_NOTIFICATIONS }
+        )
+    }
+)
 public class MediaPlugin extends Plugin {
+    private static final String TAG = "MediaPlugin";
     private MediaPlayer mediaPlayer;
     private boolean isPaused = false;
     private String currentSongTitle = "";
     private String currentSongArtist = "";
     
-    // Broadcast Receiver per gestire le azioni dalla notifica
-    private BroadcastReceiver notificationReceiver;
+    public static final String ACTION_PLAY = "com.nmediaplayer.ACTION_PLAY";
+    public static final String ACTION_PAUSE = "com.nmediaplayer.ACTION_PAUSE";
+    public static final String ACTION_NEXT = "com.nmediaplayer.ACTION_NEXT";
+    public static final String ACTION_PREV = "com.nmediaplayer.ACTION_PREV";
+    public static final String ACTION_STOP = "com.nmediaplayer.ACTION_STOP";
+    
+    private BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getStringExtra("action");
+            if (action != null) {
+                JSObject ret = new JSObject();
+                ret.put("action", action);
+                notifyListeners("notificationAction", ret);
+            }
+        }
+    };
 
     @Override
     public void load() {
         super.load();
-        // Registra il BroadcastReceiver per ascoltare il Service
-        notificationReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                if (intent.getAction().equals("com.nmediaplayer.MEDIA_ACTION")) {
-                    String action = intent.getStringExtra("action");
-                    handleRemoteAction(action);
-                }
-            }
-        };
-
         IntentFilter filter = new IntentFilter("com.nmediaplayer.MEDIA_ACTION");
-        // FLAG_RECEIVER_NOT_EXPORTED o EXPORTED è richiesto su Android 13+, gestito implicitamente o specificare se necessario
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-             getContext().registerReceiver(notificationReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            getContext().registerReceiver(mediaActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
-             getContext().registerReceiver(notificationReceiver, filter);
+            getContext().registerReceiver(mediaActionReceiver, filter);
         }
     }
 
     @Override
     protected void handleOnDestroy() {
-        if (notificationReceiver != null) {
-            try {
-                getContext().unregisterReceiver(notificationReceiver);
-            } catch (Exception e) {
-                // Già deregistrato o non registrato
-            }
+        super.handleOnDestroy();
+        try {
+            getContext().unregisterReceiver(mediaActionReceiver);
+        } catch (Exception e) {
+            Log.e(TAG, "Error unregistering receiver", e);
         }
         if (mediaPlayer != null) {
             mediaPlayer.release();
         }
-        super.handleOnDestroy();
-    }
-
-    // Gestione azioni ricevute dalla notifica
-    private void handleRemoteAction(String action) {
-        JSObject ret = new JSObject();
-        ret.put("action", action);
-
-        if (MusicPlayerService.ACTION_PAUSE.equals(action)) {
-            if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-                mediaPlayer.pause();
-                isPaused = true;
-                updateNotificationService(false); // Aggiorna icona notifica a Play
-                notifyListeners("notificationAction", ret); // Avvisa JS
-            }
-        } else if (MusicPlayerService.ACTION_PLAY.equals(action)) {
-            if (mediaPlayer != null && isPaused) {
-                mediaPlayer.start();
-                isPaused = false;
-                updateNotificationService(true); // Aggiorna icona notifica a Pause
-                notifyListeners("notificationAction", ret); // Avvisa JS
-            }
-        } else if (MusicPlayerService.ACTION_NEXT.equals(action) || MusicPlayerService.ACTION_PREV.equals(action)) {
-            // Per Next/Prev, dobbiamo chiedere a JS di cambiare canzone perché la playlist è lì
-            notifyListeners("notificationAction", ret);
-        } else if (MusicPlayerService.ACTION_STOP.equals(action)) {
-             if (mediaPlayer != null) {
-                 mediaPlayer.stop();
-                 isPaused = false;
-             }
-             notifyListeners("notificationAction", ret);
-        }
-    }
-    
-    // Helper per aggiornare la notifica senza dover chiamare dal frontend
-    private void updateNotificationService(boolean isPlaying) {
-        Context context = getContext();
-        Intent serviceIntent = new Intent(context, MusicPlayerService.class);
-        serviceIntent.setAction(MusicPlayerService.ACTION_UPDATE_NOTIFICATION);
-        serviceIntent.putExtra(MusicPlayerService.EXTRA_TITLE, currentSongTitle);
-        serviceIntent.putExtra(MusicPlayerService.EXTRA_ARTIST, currentSongArtist);
-        serviceIntent.putExtra(MusicPlayerService.EXTRA_IS_PLAYING, isPlaying);
-        context.startService(serviceIntent);
     }
 
     @PluginMethod
@@ -135,15 +109,16 @@ public class MediaPlugin extends Plugin {
 
             mediaPlayer = new MediaPlayer();
             mediaPlayer.setDataSource(path);
-            mediaPlayer.prepare();
-            mediaPlayer.start();
             
-            // Imposta listener per completamento canzone
             mediaPlayer.setOnCompletionListener(mp -> {
                 JSObject ret = new JSObject();
-                ret.put("action", "music_completed"); // Evento custom per dire a JS "finito"
-                notifyListeners("musicState", ret);
+                ret.put("action", ACTION_NEXT);
+                notifyListeners("notificationAction", ret);
             });
+
+            mediaPlayer.prepare();
+            mediaPlayer.setWakeMode(getContext(), android.os.PowerManager.PARTIAL_WAKE_LOCK);
+            mediaPlayer.start();
 
             isPaused = false;
             currentSongTitle = title;
@@ -176,23 +151,35 @@ public class MediaPlugin extends Plugin {
 
     @PluginMethod
     public void pause(PluginCall call) {
-        if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-            mediaPlayer.pause();
-            isPaused = true;
-            call.resolve();
-        } else {
-            call.reject("No audio is playing");
+        try {
+            if (mediaPlayer != null && mediaPlayer.isPlaying()) {
+                mediaPlayer.pause();
+                isPaused = true;
+                call.resolve();
+            } else {
+                call.reject("No audio is playing");
+            }
+        } catch (Exception e) {
+            call.reject("Pause failed: " + e.getMessage());
         }
     }
 
     @PluginMethod
     public void resume(PluginCall call) {
-        if (mediaPlayer != null && isPaused) {
-            mediaPlayer.start();
-            isPaused = false;
-            call.resolve();
-        } else {
-            call.reject("No audio is paused");
+        try {
+            if (mediaPlayer == null) {
+                call.reject("No media player initialized");
+                return;
+            }
+            if (!mediaPlayer.isPlaying()) {
+                mediaPlayer.start();
+                isPaused = false;
+                call.resolve();
+            } else {
+                call.resolve();
+            }
+        } catch (Exception e) {
+            call.reject("Resume failed: " + e.getMessage());
         }
     }
 
@@ -220,28 +207,57 @@ public class MediaPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void checkPermissions(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (getPermissionState("notifications") != com.getcapacitor.PermissionState.GRANTED) {
+                requestPermissionForAlias("notifications", call, "permissionCallback");
+            } else {
+                call.resolve();
+            }
+        } else {
+            call.resolve();
+        }
+    }
+
+    @PluginMethod
+    public void permissionCallback(PluginCall call) {
+        if (getPermissionState("notifications") == com.getcapacitor.PermissionState.GRANTED) {
+            call.resolve();
+        } else {
+            call.reject("Permission denied");
+        }
+    }
+
+    @PluginMethod
     public void startMusicNotification(PluginCall call) {
         String title = call.getString("title", "No song playing");
         String artist = call.getString("artist", "Unknown Artist");
         Boolean isPlaying = call.getBoolean("isPlaying", true);
         
-        currentSongTitle = title;
-        currentSongArtist = artist;
-        
-        Context context = getContext();
-        Intent serviceIntent = new Intent(context, MusicPlayerService.class);
-        serviceIntent.setAction(MusicPlayerService.ACTION_START_FOREGROUND);
-        serviceIntent.putExtra(MusicPlayerService.EXTRA_TITLE, title);
-        serviceIntent.putExtra(MusicPlayerService.EXTRA_ARTIST, artist);
-        serviceIntent.putExtra(MusicPlayerService.EXTRA_IS_PLAYING, isPlaying);
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(serviceIntent);
-        } else {
-            context.startService(serviceIntent);
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                Log.e(TAG, "Manca il permesso POST_NOTIFICATIONS! La notifica non apparirà.");
+            }
         }
-        
-        call.resolve();
+
+        try {
+            Context context = getContext();
+            Intent serviceIntent = new Intent(context, MusicPlayerService.class);
+            serviceIntent.setAction(MusicPlayerService.ACTION_START_FOREGROUND);
+            serviceIntent.putExtra(MusicPlayerService.EXTRA_TITLE, title);
+            serviceIntent.putExtra(MusicPlayerService.EXTRA_ARTIST, artist);
+            serviceIntent.putExtra(MusicPlayerService.EXTRA_IS_PLAYING, isPlaying);
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
+            
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Failed to start notification: " + e.getMessage());
+        }
     }
 
     @PluginMethod
@@ -253,26 +269,34 @@ public class MediaPlugin extends Plugin {
         if (title != null) currentSongTitle = title;
         if (artist != null) currentSongArtist = artist;
         
-        Context context = getContext();
-        Intent serviceIntent = new Intent(context, MusicPlayerService.class);
-        serviceIntent.setAction(MusicPlayerService.ACTION_UPDATE_NOTIFICATION);
-        serviceIntent.putExtra(MusicPlayerService.EXTRA_TITLE, currentSongTitle);
-        serviceIntent.putExtra(MusicPlayerService.EXTRA_ARTIST, currentSongArtist);
-        if (isPlaying != null) {
-            serviceIntent.putExtra(MusicPlayerService.EXTRA_IS_PLAYING, isPlaying);
+        try {
+            Context context = getContext();
+            Intent serviceIntent = new Intent(context, MusicPlayerService.class);
+            serviceIntent.setAction(MusicPlayerService.ACTION_UPDATE_NOTIFICATION);
+            serviceIntent.putExtra(MusicPlayerService.EXTRA_TITLE, currentSongTitle);
+            serviceIntent.putExtra(MusicPlayerService.EXTRA_ARTIST, currentSongArtist);
+            if (isPlaying != null) {
+                serviceIntent.putExtra(MusicPlayerService.EXTRA_IS_PLAYING, isPlaying);
+            }
+            
+            context.startService(serviceIntent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Failed to update notification: " + e.getMessage());
         }
-        
-        context.startService(serviceIntent);
-        call.resolve();
     }
 
     @PluginMethod
     public void stopMusicNotification(PluginCall call) {
-        Context context = getContext();
-        Intent serviceIntent = new Intent(context, MusicPlayerService.class);
-        serviceIntent.setAction(MusicPlayerService.ACTION_STOP_FOREGROUND);
-        context.startService(serviceIntent);
-        call.resolve();
+        try {
+            Context context = getContext();
+            Intent serviceIntent = new Intent(context, MusicPlayerService.class);
+            serviceIntent.setAction(MusicPlayerService.ACTION_STOP_FOREGROUND);
+            context.startService(serviceIntent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Failed to stop notification: " + e.getMessage());
+        }
     }
 
     @PluginMethod
@@ -282,14 +306,17 @@ public class MediaPlugin extends Plugin {
 
     @PluginMethod
     public void handleNotificationAction(PluginCall call) {
-        // Questo metodo rimane per compatibilità, ma ora le azioni sono gestite dal BroadcastReceiver
         String action = call.getString("action");
-        if (action != null) {
-            JSObject result = new JSObject();
-            result.put("action", action);
-            notifyListeners("notificationAction", result);
+        if (action == null) {
+            call.reject("No action provided");
+            return;
         }
-        call.resolve();
+
+        JSObject result = new JSObject();
+        result.put("action", action);
+        notifyListeners("notificationAction", result);
+        
+        call.resolve(result);
     }
 
     @PluginMethod
@@ -368,7 +395,6 @@ public class MediaPlugin extends Plugin {
             playlist.put("songs", songList);
 
             String filename = name.replaceAll("\\s+", "_") + ".json";
-
             File file = new File(dir, filename);
 
             try (FileWriter writer = new FileWriter(file)) {
@@ -377,7 +403,6 @@ public class MediaPlugin extends Plugin {
 
             JSObject result = new JSObject();
             result.put("path", file.getAbsolutePath());
-
             call.resolve(result);
 
         } catch (Exception e) {
@@ -456,7 +481,6 @@ public class MediaPlugin extends Plugin {
                         song.put(key, value.toString());
                     }
                 }
-
                 songs.put(song);
             }
 
@@ -494,7 +518,6 @@ public class MediaPlugin extends Plugin {
             br.close();
 
             JSONObject playlist = new JSONObject(content.toString());
-
             JSONArray updatedSongs = new JSONArray();
 
             for (int i = 0; i < newSongs.length(); i++) {

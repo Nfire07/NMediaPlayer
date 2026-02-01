@@ -1,6 +1,6 @@
 <template>
   <div class="content">
-    <h2>Create Playlist <i class="bi bi-pencil"></i></h2>
+    <h2 class="page-title">Create Playlist <i class="bi bi-pencil"></i></h2>
     <input
       class="name-input"
       type="text"
@@ -16,7 +16,7 @@
       <ul
         v-else
         class="songs-list"
-        style="overflow-y: auto; max-height: 50vh; width: 100%;"
+        style="overflow-y: auto; max-height: 40vh; width: 100%;"
       >
         <li
           v-for="song in songs"
@@ -39,7 +39,7 @@
     </button>
   </div>
 
-  <button class="back-button" @click="$emit('goBack')">Return to menu</button>
+  <button class="back-button" @click="$emit('goBack')"><i class="bi bi-arrow-left"></i> Return to menu</button>
 </template>
 
 <script>
@@ -173,6 +173,13 @@ body.dark .name-input{
 
 .confirm-button:active{
   background-color: #001f7b;
+}
+.page-title {
+  padding: 2.5rem 1rem 1rem;
+  font-weight: 700;
+  font-size: 1.5rem;
+  text-align: center;
+  margin-bottom: 1rem;
 }
 
 .back-button {

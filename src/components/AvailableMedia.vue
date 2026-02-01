@@ -23,7 +23,7 @@
       </SongLoader>
     </div>
 
-    <button class="back-button" @click="$emit('goBack');stopPlayback()">Return to menu</button>
+    <button class="back-button" @click="$emit('goBack');stopPlayback()"><i class="bi bi-arrow-left"></i> Return to menu</button>
   </div>
 </template>
 

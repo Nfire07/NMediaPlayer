@@ -61,6 +61,8 @@ export default {
 	display: flex;
 	justify-content: center;
 	align-items: center;
+	flex-direction: row;
+	gap: 1rem;
 	text-align: center;
 	flex-wrap: wrap;
 	transition: transform 0.1s ease, box-shadow 0.2s ease;
