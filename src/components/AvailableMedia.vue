@@ -6,7 +6,7 @@
     <MusicPlayer v-if="currentSong" :currentSong="currentSong" @returnToList="stopPlayback"/>
     
     <div v-else>
-      <h2 class="page-title">🎶 Available Media</h2>
+      <h2 class="page-title">Available Media <i class="bi bi-music-note-list"></i></h2>
       <SongLoader v-slot="{ songs }">
         <div v-if="songs.length === 0" class="no-songs">No Music Found</div>
         <ul v-else class="songs-list">
@@ -60,12 +60,16 @@ export default {
     async playSong(song) {
       await ForegroundService.startForegroundService({
         id: 1,
-        title: 'Currently playing',
-        body: song.title,
+        title: song.title || 'Currently playing',
+        body: song.artist || 'Unknown Artist',
         smallIcon: 'ic_launcher',
         serviceType: ServiceType.MediaPlayback
       })
-      await MediaPlugin.play({ path: song.path })
+      await MediaPlugin.play({ 
+        path: song.path,
+        title: song.title,
+        artist: song.artist || 'Unknown Artist'
+      })
       this.currentPlayingPath = song.path
       this.currentSong = song
     },
@@ -182,15 +186,14 @@ export default {
   border: none;
   cursor: pointer;
   transition: background 0.3s ease;
-  display: flex;
-  justify-content: center;
-  align-items: center;
   gap: 0.5rem;
   background: rgba(255, 255, 255, 0.2);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255, 255, 255, 0.3);
   color: inherit;
+  position:fixed;
+  bottom:0;
 }
 
 .back-button:hover {

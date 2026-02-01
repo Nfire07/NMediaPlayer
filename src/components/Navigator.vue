@@ -1,19 +1,19 @@
 <template>
   <div class="container">
     <h1 id="title">
-      N-Media Player 🎵
+      Simple Music Player <i class="bi bi-music-player"></i>
     </h1>
 
     <button class="card text avalable-media" @click="$emit('navigate', 'media')">
-      Show Available Media<br> 🎶
+      Show Available Media<br> <i class="bi bi-music-note-list"></i>
     </button>
 
     <button class="card text playlists" @click="$emit('navigate', 'playlists')">
-      Show Playlists<br> 📁
+      Show Playlists<br> <i class="bi bi-view-list"></i>
     </button>
 
     <button class="card text create-playlist" @click="$emit('navigate', 'create')">
-      Create New Playlist<br> ✨
+      Create New Playlist<br> <i class="bi bi-pencil"></i>
     </button>
   </div>
 </template>

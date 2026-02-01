@@ -1,6 +1,6 @@
 <template>
   <div class="content">
-    <h2>✨ Your Playlist</h2>
+    <h2>Create Playlist <i class="bi bi-pencil"></i></h2>
     <input
       class="name-input"
       type="text"
@@ -176,19 +176,15 @@ body.dark .name-input{
 }
 
 .back-button {
-  flex-shrink: 0;
-  flex-grow: 1;
   padding-bottom: 2rem;
   border: none;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.3s ease;
-  display: flex;
-  justify-content: center;
-  align-items: center;
   padding-top:2rem;
-  margin-top: auto;
+  position:fixed;
+  bottom: 0;
   width: 100%;
   background: rgba(255, 255, 255, 0.2);
   backdrop-filter: blur(10px);

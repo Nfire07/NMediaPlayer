@@ -1,7 +1,7 @@
 <template>
   <div class="content">
     <template v-if="!showPlayer">
-      <h2 class="page-title" v-if="!selectedPlaylist">📁 Your Playlists</h2>
+      <h2 class="page-title" v-if="!selectedPlaylist">Your Playlists <i class="bi bi-view-list"></i></h2>
 
       <div v-if="!selectedPlaylist">
         <div v-if="loading" class="loading-text">Loading playlists...</div>
@@ -13,9 +13,9 @@
             class="playlist-item"
           >
             {{ playlist.name }}
-            <button class="open-button" @click="openPlaylist(playlist)"><img :src="playLineIcon" class="button-icon"></button>
-            <button class="remove-button" @click="removePlaylist(playlist.name)"><img :src="trashIcon" class="button-icon"></button>
-            <button class="shuffle-button" @click="playInShuffleMode(playlist)"><img :src="shuffleIcon" class="button-icon"></button>
+            <button class="open-button" @click="openPlaylist(playlist)"><i class="bi bi-arrow-left"></i></button>
+            <button class="remove-button" @click="removePlaylist(playlist.name)"><i class="bi bi-trash"></i></button>
+            <button class="shuffle-button" @click="playInShuffleMode(playlist)"><i class="bi bi-shuffle"></i></button>
           </li>
         </ul>
       </div>
@@ -111,10 +111,26 @@ export default {
     }
   },
   methods: {
-    playSongAtIndex(index) {
+    async playSongAtIndex(index) {
+      try {
+        await this.requestLocation()
+      } catch (err) {
+        console.error('Permission error:', err)
+        alert('Location permission is required to play media in the foreground.')
+        return
+      }
+      
       this.currentPlayingIndex = index
-      this.isShuffleModeOn = false;
+      this.isShuffleModeOn = false
       this.showPlayer = true
+    },
+    async requestLocation() {
+      const { Geolocation } = await import('@capacitor/geolocation')
+      const permission = await Geolocation.requestPermissions()
+      if (permission.location !== 'granted') {
+        throw new Error('Location permission denied')
+      }
+      return true
     },
     closePlayer() {
       this.showPlayer = false
@@ -139,14 +155,22 @@ export default {
       }
     },
     async playInShuffleMode(playlist) {
-      this.isShuffleModeOn = true;
-      await this.openPlaylist(playlist);
+      try {
+        await this.requestLocation()
+      } catch (err) {
+        console.error('Permission error:', err)
+        alert('Location permission is required to play media in the foreground.')
+        return
+      }
+      
+      this.isShuffleModeOn = true
+      await this.openPlaylist(playlist)
       if (this.playlistSongs.length > 0) {
-        const randomIndex = Math.floor(Math.random() * this.playlistSongs.length);
-        this.currentPlayingIndex = randomIndex;
-        this.showPlayer = true;
+        const randomIndex = Math.floor(Math.random() * this.playlistSongs.length)
+        this.currentPlayingIndex = randomIndex
+        this.showPlayer = true
       } else {
-        alert("This playlist has no songs to shuffle.");
+        alert("This playlist has no songs to shuffle.")
       }
     },
     async removePlaylist(name) {
@@ -342,24 +366,20 @@ export default {
 }
 
 .back-button {
-  flex-shrink: 0;
-  flex-grow: 1;
   padding: 2rem 1rem;
   font-size: 1rem;
   font-weight: 600;
   border: none;
   cursor: pointer;
   transition: background 0.3s ease;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-top: auto;
   width: 100%;
   background: rgba(255, 255, 255, 0.2);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255, 255, 255, 0.3);
   color: inherit;
+  position:fixed;
+  bottom:0;
 }
 
 .back-button:hover {

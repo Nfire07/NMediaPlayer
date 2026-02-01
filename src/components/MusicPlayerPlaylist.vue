@@ -1,6 +1,6 @@
 <template>
   <div class="music-player">
-    <div class="title">{{ currentSong?.title || "No song playing" }}</div>
+    <div class="title">{{ currentSongTitle }}</div>
     <div class="progress-container">
       <input
         type="range"
@@ -17,57 +17,40 @@
     </div>
 
     <div class="controls-row">
-      <button 
-            class="arrow-button" 
-            :disabled="!hasPrev" 
-            @click="prevSong"
-            >
-        <img :src="leftArrowIcon" class="arrow-icon" />
-        </button>
+      <button class="arrow-button" :disabled="!playerStore.hasPrev" @click="handlePrevious">
+        <i class="bi bi-chevron-bar-left"></i>
+      </button>
 
-    <button class="pause-button" @click="togglePlayPause">
-        <img :src="currentIcon" class="pause-button-icon" />
-    </button>
+      <button class="pause-button" @click="handlePlayPause">
+        <i class="bi bi-pause-fill" v-if="!isPlaying"></i>
+        <i class="bi bi-caret-right-fill" v-else></i>
+      </button>
 
-    <button 
-        class="arrow-button" 
-        :disabled="!hasNext" 
-        @click="nextSong"
-        >
-        <img :src="rightArrowIcon" class="arrow-icon" />
-    </button>
+      <button class="arrow-button" :disabled="!playerStore.hasNext" @click="handleNext">
+        <i class="bi bi-chevron-bar-right"></i>
+      </button>
+    </div>
   </div>
-</div>
 </template>
 
 <script>
+import { useMusicPlayerStore } from '@/stores/musicPlayerStore.js'
 import { MediaPlugin } from '@/plugins/MediaPlugin'
+import { KeepAwake } from '@capacitor-community/keep-awake'
 import pauseIcon from '@/assets/PAUSE.png'
 import playIcon from '@/assets/PLAY.png'
 import rightArrowIcon from '@/assets/RIGHT_ARROW.png'
 import leftArrowIcon from '@/assets/LEFT_ARROW.png'
-import { KeepAwake } from '@capacitor-community/keep-awake'
 
 export default {
-  name: "MusicPlayerPlaylist",
   props: {
-    songs: {
-      type: Array,
-      default: () => [],
-    },
-    initialIndex: {
-      type: Number,
-      default: 0,
-    },
-    isShuffleModeOn: {
-      type: Boolean,
-      default: false,
-    }
+    songs: Array,
+    initialIndex: Number,
+    isShuffleModeOn: Boolean
   },
   data() {
     return {
-      currentSongIndex: this.initialIndex,  // indice corrente nella lista
-      isPlaying: false,
+      playerStore: useMusicPlayerStore(),
       duration: 0,
       currentTime: 0,
       intervalId: null,
@@ -75,429 +58,97 @@ export default {
       playIcon,
       rightArrowIcon,
       leftArrowIcon,
+      notificationListener: null
     }
   },
   computed: {
-    currentSong() {
-      return this.songs[this.currentSongIndex] || null;
-    },
-    currentIcon() {
-      return this.isPlaying ? this.pauseIcon : this.playIcon;
-    },
-    // Pulsante "indietro" abilitato solo in modalità lineare, se non siamo al primo brano
-    hasPrev() {
-      return !this.isShuffleModeOn && this.currentSongIndex > 0;
-    },
-    // Pulsante "avanti" abilitato solo in modalità lineare se ci sono brani dopo, o sempre attivo in shuffle (ma non “indietro”)
-    hasNext() {
-      if (this.isShuffleModeOn) {
-        // in shuffle sempre abilitiamo "avanti" se ci sono almeno 2 canzoni
-        return this.songs.length > 1;
-      } else {
-        return this.currentSongIndex < this.songs.length - 1;
-      }
+    currentSongTitle() {
+      return this.playerStore.currentSong?.title || "No song playing"
     }
   },
   watch: {
-    songs: {
+    'playerStore.currentSong': {
       immediate: true,
-      handler(newSongs) {
-        if (newSongs.length > 0) {
-          // se l'indice corrente è fuori dalla nuova lista
-          if (this.currentSongIndex >= newSongs.length) {
-            this.currentSongIndex = 0;
+      async handler(newSong) {
+        if (newSong) {
+          try {
+            const info = await MediaPlugin.getSongInfo({ path: newSong.path })
+            this.duration = info.duration || 0
+            this.currentTime = 0
+            this.startProgress()
+          } catch (e) {
+            console.error(e)
           }
-          // partire subito dal brano corrente
-          this.playSong(this.songs[this.currentSongIndex].path);
-        } else {
-          this.stop();
         }
-      },
+      }
     }
+  },
+  async mounted() {
+    await KeepAwake.keepAwake()
+    
+    if (this.songs.length > 0) {
+      this.playerStore.setPlaylist(this.songs, this.initialIndex, this.isShuffleModeOn)
+      await this.playerStore.playSong(this.songs[this.initialIndex], this.initialIndex)
+    }
+
+    this.notificationListener = await MediaPlugin.addListener('notificationAction', (data) => {
+      this.playerStore.handleNotificationAction(data.action)
+    })
+  },
+  async beforeUnmount() {
+    if (this.intervalId) clearInterval(this.intervalId)
+    await KeepAwake.allowSleep()
+    if (this.notificationListener) this.notificationListener.remove()
   },
   methods: {
-    async playSong(path) {
-      try {
-        const idx = this.songs.findIndex(song => song.path === path);
-        if (idx !== -1) {
-          this.currentSongIndex = idx;
-        }
-        await MediaPlugin.stop();
-        await MediaPlugin.play({ path });
-        this.isPlaying = true;
-        this.currentTime = 0;
-
-        const info = await MediaPlugin.getSongInfo({ path });
-        this.duration = info.duration || 0;
-
-        this.startProgress();
-      } catch (e) {
-        alert("An error occurred while playing: " + e.message);
-      }
-    },
-
     startProgress() {
-      if (this.intervalId) clearInterval(this.intervalId);
-
+      if (this.intervalId) clearInterval(this.intervalId)
       this.intervalId = setInterval(async () => {
-        try {
-          const status = await MediaPlugin.getPlaybackStatus();
-          this.currentTime = status.currentTime || 0;
-          this.isPlaying = status.isPlaying;
-
-          if (this.duration > 0 && this.currentTime >= this.duration - 0.5) {
-            clearInterval(this.intervalId);
-            this.currentTime = this.duration;
-            await this.nextSong();
-          }
-        } catch (e) {
-          console.error("Playback status error:", e.message);
+        const status = await MediaPlugin.getPlaybackStatus()
+        this.currentTime = status.currentTime || 0
+        if (this.duration > 0 && this.currentTime >= this.duration - 0.8) {
+          clearInterval(this.intervalId)
+          await this.playerStore.next()
         }
-      }, 500);
+      }, 1000)
     },
-
-    async stop() {
-      if (this.intervalId) clearInterval(this.intervalId);
-      this.isPlaying = false;
-      this.currentTime = 0;
-      this.duration = 0;
-      await MediaPlugin.stop();
-    },
-
-    async togglePlayPause() {
-      try {
-        if (!this.currentSong) return;
-        if (this.isPlaying) {
-          await MediaPlugin.pause();
-          this.isPlaying = false;
-        } else {
-          if (this.currentTime >= this.duration) {
-            this.currentTime = 0;
-            await MediaPlugin.seek({ position: 0 });
-            await MediaPlugin.play({ path: this.currentSong.path });
-          } else {
-            try {
-              await MediaPlugin.resume();
-            } catch {
-              await MediaPlugin.play({ path: this.currentSong.path });
-              this.currentTime = 0;
-            }
-          }
-          this.isPlaying = true;
-        }
-      } catch (e) {
-        alert("Playback error: " + e.message);
+    async handlePlayPause() {
+      if (this.playerStore.isPlaying) {
+        await this.playerStore.pause()
+      } else {
+        await this.playerStore.resume()
       }
     },
-
     async seek() {
-      const position = Math.floor(this.currentTime);
-      if (
-        typeof position !== "number" ||
-        isNaN(position) ||
-        position < 0 ||
-        position > this.duration
-      ) {
-        console.warn("Invalid seek position:", position);
-        return;
-      }
-      try {
-        await MediaPlugin.seek({ position });
-      } catch (e) {
-        console.error("Seek failed:", e.message);
-      }
+      await MediaPlugin.seek({ position: Math.floor(this.currentTime) })
     },
-
+    async handleNext() {
+      await this.playerStore.next()
+    },
+    async handlePrevious() {
+      await this.playerStore.previous()
+    },
     formatTime(seconds) {
-      const m = Math.floor(seconds / 60).toString().padStart(2, "0");
-      const s = Math.floor(seconds % 60).toString().padStart(2, "0");
-      return `${m}:${s}`;
-    },
-
-    async nextSong() {
-      // se non ci sono canzoni, non fare nulla
-      if (this.songs.length === 0) return;
-
-      if (this.isShuffleModeOn) {
-        // modalita shuffle
-        if (this.songs.length === 1) {
-          // solo una canzone: resta quella
-          await this.playSong(this.songs[0].path);
-        } else {
-          let newIndex;
-          do {
-            newIndex = Math.floor(Math.random() * this.songs.length);
-          } while (newIndex === this.currentSongIndex);
-          this.currentSongIndex = newIndex;
-          await this.playSong(this.songs[newIndex].path);
-        }
-      } else {
-        // modalita lineare
-        if (this.currentSongIndex < this.songs.length - 1) {
-          this.currentSongIndex++;
-        } else {
-          // facciamo ripartire o fermare? 
-          // Se vuoi ricominciare da capo:
-          this.currentSongIndex = 0;
-        }
-        await this.playSong(this.songs[this.currentSongIndex].path);
-      }
-    },
-
-    async prevSong() {
-      // pulsante “indietro” disabilitato in shuffle, quindi controlla la computed hasPrev
-      if (!this.hasPrev) return;
-
-      // solo modalità lineare
-      if (this.currentSongIndex > 0) {
-        this.currentSongIndex--;
-      } else {
-        this.currentSongIndex = 0;
-      }
-      await this.playSong(this.songs[this.currentSongIndex].path);
-    },
-
-    handleReturnToList() {
-      this.stop();
-      this.$emit('returnToList');
+      const m = Math.floor(seconds / 60).toString().padStart(2, "0")
+      const s = Math.floor(seconds % 60).toString().padStart(2, "0")
+      return `${m}:${s}`
     }
-  },
-
-  mounted() {
-    KeepAwake.keepAwake().catch(error => {
-      console.error('Errore nel mantenere lo schermo acceso:', error);
-    });
-  },
-
-  beforeUnmount() {
-    if (this.intervalId) clearInterval(this.intervalId);
-    KeepAwake.allowSleep().catch(error => {
-      console.error('Errore nel permettere lo spegnimento dello schermo:', error);
-    });
   }
 }
 </script>
 
 <style scoped>
-.music-player {
-  width: 75%;
-  height: 90vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3rem;
-  user-select: none;
-}
-
-.title {
-  font-weight: 700;
-  font-size: 2rem;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 100%;
-  color: #fefefe;
-  animation: fromLeftToRight 3s ease-in-out infinite;
-}
-
-@keyframes fromLeftToRight {
-  0% {
-    background: linear-gradient(90deg, #e1e1e1,  #bb00bb, #a382ba);
-    background-size: 200% 200%;
-    background-position: 0% 50%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: #a382ba 1px 1px 6px;
-  }
-  50% {
-    background: linear-gradient(90deg, #e1e1e1, #bb00bb, #a382ba);
-    background-size: 200% 200%;
-    background-position: 100% 50%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: #a382ba 1px 1px 6px;
-  }
-  100% {
-    background: linear-gradient(90deg, #e1e1e1, #bb00bb, #a382ba);
-    background-size: 200% 200%;
-    background-position: 0% 50%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: #a382ba 1px 1px 6px;
-  }
-}
-
-.progress-container {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.progress-bar {
-  width: 100%;
-  cursor: pointer;
-  -webkit-appearance: none;
-  height: 8px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  outline: none;
-}
-
-.progress-bar::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  background: linear-gradient(135deg, #91039e57, #5a0286c1);
-  cursor: pointer;
-  border-radius: 50%;
-  border: none;
-  margin-top: -3px;
-  transition: background-color 0.3s ease;
-}
-
-.progress-bar::-webkit-slider-thumb:hover {
-  background:linear-gradient(135deg, #a404b365, #8106be8a);
-}
-
-.time-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.9rem;
-  color: #fefefe;
-}
-
-.pause-button {
-  width: 30vw;
-  height: 30vw;
-  max-width: 200px;
-  max-height: 200px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: linear-gradient(135deg, #6f6f6f, #3a3a3a);
-  color: #fefefe;
-  border: none;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.2s ease;
-  user-select: none;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-.pause-button:active {
-  background: linear-gradient(135deg, #2c2c2c, #1a1a1a);
-  transform: scale(0.96);
-}
-
-
-.stop-button{
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background-color: #bb0000;
-  color: #fefefe;
-  font-weight: 600;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  user-select: none;
-}
-
-.pause-button-icon{
-  width:30%;
-  height:30%;
-  filter: blur(0.05px);
-}
-
-.controls-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2rem;
-  width: 100%;
-}
-
-.arrow-button {
-  width: 15vw;
-  height: 15vw;
-  max-width: 80px;
-  max-height: 80px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: linear-gradient(135deg, #6f6f6f, #3a3a3a);
-  color: #fefefe;
-  border: none;
-  font-size: 1rem;
-  user-select: none;
-  opacity: 0.6;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-  transition: background 0.3s ease, transform 0.2s ease;
-}
-
-.arrow-button:active {
-  background: linear-gradient(135deg, #2c2c2c, #1a1a1a);
-  transform: scale(0.95);
-}
-
-.arrow-icon {
-  width: 50%;
-  height: 50%;
-  object-fit: contain;
-  filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.4));
-}
-
-.arrow-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.return-button {
-  width: 60%;
-  height: 60px; 
-  padding: 0 1.5rem;
-  border: none;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.2s ease;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  color: #fff;
-  user-select: none;
-}
-
-.return-button:hover {
-  background: rgba(255, 255, 255, 0.25);
-  transform: translateY(-1px);
-}
-
-.return-button:active {
-  background: rgba(255, 255, 255, 0.1);
-  transform: scale(0.98);
-}
-
-.return-icon {
-  width: 24px;
-  height: 35px;
-  object-fit: contain;
-  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.3));
-}
-
-
+.music-player { width: 75%; height: 90vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3rem; user-select: none; }
+.title { font-weight: 700; font-size: 2rem; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; color: #fefefe; animation: fromLeftToRight 3s ease-in-out infinite; }
+@keyframes fromLeftToRight { 0%, 100% { background: linear-gradient(90deg, #e1e1e1, #bb00bb, #a382ba); background-size: 200% 200%; background-position: 0% 50%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: #a382ba 1px 1px 6px; } 50% { background: linear-gradient(90deg, #e1e1e1, #bb00bb, #a382ba); background-size: 200% 200%; background-position: 100% 50%; -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: #a382ba 1px 1px 6px; } }
+.progress-container { width: 100%; display: flex; flex-direction: column; gap: 0.25rem; }
+.progress-bar { width: 100%; cursor: pointer; -webkit-appearance: none; height: 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.2); outline: none; }
+.progress-bar::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: linear-gradient(135deg, #91039e57, #5a0286c1); cursor: pointer; border-radius: 50%; border: none; margin-top: -3px; }
+.time-info { display: flex; justify-content: space-between; font-size: 0.9rem; color: #fefefe; }
+.pause-button { width: 30vw; height: 30vw; max-width: 200px; max-height: 200px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6f6f6f, #3a3a3a); border: none; cursor: pointer; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); }
+.pause-button-icon { width: 30%; height: 30%; }
+.controls-row { display: flex; align-items: center; justify-content: center; gap: 2rem; width: 100%; }
+.arrow-button { width: 15vw; height: 15vw; max-width: 80px; max-height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #6f6f6f, #3a3a3a); border: none; opacity: 0.6; cursor: pointer; }
+.arrow-icon { width: 50%; height: 50%; object-fit: contain; }
+.arrow-button:disabled { cursor: not-allowed; opacity: 0.3; }
 </style>
