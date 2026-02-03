@@ -1,13 +1,15 @@
 <template>
   <div class="music-player">
     <div class="title">{{ currentSongTitle }}</div>
+    
     <div class="progress-container">
       <input
         type="range"
         min="0"
         :max="duration"
         v-model="currentTime"
-        @input="seek"
+        @input="onSeekInput"
+        @change="onSeekChange"
         class="progress-bar"
       />
       <div class="time-info">
@@ -59,10 +61,10 @@ const currentTime = ref(0)
 const intervalId = ref(null)
 const notificationListener = ref(null)
 
-const currentIcon = computed(() => playerStore.isPlaying ? pauseIcon : playIcon)
+const isSeeking = ref(false)
+
 const currentSongTitle = computed(() => playerStore.currentSong?.title || "No song playing")
 
-// Inizializza playlist
 watch(() => props.songs, async (newSongs) => {
   if (newSongs.length > 0) {
     playerStore.setPlaylist(newSongs, props.initialIndex, props.isShuffleModeOn)
@@ -70,16 +72,18 @@ watch(() => props.songs, async (newSongs) => {
   }
 }, { immediate: true })
 
-// Reagisce al cambio canzone nello store per aggiornare durata e UI
 watch(() => playerStore.currentSong, async (newSong) => {
   if (newSong) {
-    currentTime.value = 0
+    if (!isSeeking.value) currentTime.value = 0
+    
     try {
       const info = await MediaPlugin.getSongInfo({ path: newSong.path })
       duration.value = info.duration || 0
     } catch (e) {
       console.error('Error info:', e)
+      duration.value = newSong.duration || 0; 
     }
+    
     startProgress()
   }
 })
@@ -88,20 +92,23 @@ function startProgress() {
   if (intervalId.value) clearInterval(intervalId.value)
   
   intervalId.value = setInterval(async () => {
+    if (isSeeking.value) return;
+
     try {
       const status = await MediaPlugin.getPlaybackStatus()
-      currentTime.value = status.currentTime || 0
       
-      // Sincronizza lo stato play/pause se cambiato esternamente (es. cuffie bluetooth)
+      const nativeTime = status.currentTime || 0
+      currentTime.value = nativeTime
+
       if (playerStore.isPlaying !== status.isPlaying) {
         playerStore.isPlaying = status.isPlaying
       }
     } catch (e) {
-      // ignore silently
     }
   }, 1000) 
 }
 
+// Handler UI
 async function handlePlayPause() {
   if (playerStore.isPlaying) {
     await playerStore.pause()
@@ -113,8 +120,18 @@ async function handlePlayPause() {
 async function handleNext() { await playerStore.next() }
 async function handlePrevious() { await playerStore.previous() }
 
-async function seek() {
+// --- Gestione SEEK (Barra di avanzamento) ---
+
+function onSeekInput() {
+  isSeeking.value = true
+}
+
+async function onSeekChange() {
   await MediaPlugin.seek({ position: Math.floor(currentTime.value) })
+  
+  setTimeout(() => {
+    isSeeking.value = false
+  }, 500)
 }
 
 function formatTime(seconds) {
@@ -130,14 +147,18 @@ onMounted(async () => {
   } catch (e) {
     console.log("Permission check skipped or failed", e)
   }
+  
   try {
     await KeepAwake.keepAwake()
   } catch(e) { console.error(e) }
 
   notificationListener.value = await MediaPlugin.addListener('notificationAction', (data) => {
     console.log('Action received from Native:', data.action)
+    
     playerStore.handleNotificationAction(data.action)
   })
+  
+  startProgress()
 })
 
 onBeforeUnmount(async () => {

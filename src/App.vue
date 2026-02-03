@@ -4,20 +4,21 @@
       <Navigator v-if="currentView === 'navigator'" @navigate="setView" />
       <AvailableMedia v-if="currentView === 'media'" @goBack="setView('navigator')" />
       <Playlists v-if="currentView === 'playlists'" @goBack="setView('navigator')" />
-      <CreatePlaylist v-if="currentView === 'create'" @goBack="setView('navigator')" />
-    </div>
+      <CreatePlaylist v-if="currentView === 'create'" @goBack="setView('navigator')" /> 
+	</div>
+
     <footer class="footer" v-if="currentView === 'navigator'">
       <p>Developed by <img src="./assets/ICON_NO_ALPHA.png" alt="N" /></p>
     </footer>
   </div>
 </template>
 
-
 <script>
 import Navigator from './components/Navigator.vue'
 import AvailableMedia from './components/AvailableMedia.vue'
 import Playlists from './components/Playlists.vue'
 import CreatePlaylist from './components/CreatePlaylist.vue'
+import { useMusicPlayerStore } from '@/stores/musicPlayerStore'
 
 export default {
   components: {
@@ -26,14 +27,25 @@ export default {
     Playlists,
     CreatePlaylist
   },
+  setup() {
+    const musicStore = useMusicPlayerStore()
+    return { musicStore }
+  },
   data() {
     return {
       currentView: 'navigator'
     }
   },
-  mounted() {
+  async mounted() {
     this.applyTheme()
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', this.applyTheme)
+
+    try {
+      await this.musicStore.init()
+      console.log('Media Plugin Initialized')
+    } catch (e) {
+      console.error('Failed to init media plugin', e)
+    }
   },
   beforeUnmount() {
     window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', this.applyTheme)
@@ -42,7 +54,7 @@ export default {
     setView(view) {
       this.currentView = view
     },
-	applyTheme() {
+    applyTheme() {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
       document.body.classList.toggle('dark', isDark)
     }
@@ -106,4 +118,7 @@ export default {
 		height: 24px;
 		vertical-align: middle;
 	}
+
 </style>
+
+

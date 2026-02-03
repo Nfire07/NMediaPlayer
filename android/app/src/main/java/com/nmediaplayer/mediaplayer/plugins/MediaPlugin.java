@@ -22,8 +22,11 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import org.json.JSONObject;
+import com.getcapacitor.annotation.Permission;
+import com.nmediaplayer.mediaplayer.MusicPlayerService; // Importiamo il tuo Service
+
 import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -31,8 +34,6 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.util.Iterator;
 
-import com.getcapacitor.annotation.Permission;
-import com.nmediaplayer.mediaplayer.MusicPlayerService;
 @CapacitorPlugin(
     name = "MediaPlugin",
     permissions = {
@@ -44,17 +45,8 @@ import com.nmediaplayer.mediaplayer.MusicPlayerService;
 )
 public class MediaPlugin extends Plugin {
     private static final String TAG = "MediaPlugin";
-    private MediaPlayer mediaPlayer;
-    private boolean isPaused = false;
-    private String currentSongTitle = "";
-    private String currentSongArtist = "";
-    
-    public static final String ACTION_PLAY = "com.nmediaplayer.ACTION_PLAY";
-    public static final String ACTION_PAUSE = "com.nmediaplayer.ACTION_PAUSE";
-    public static final String ACTION_NEXT = "com.nmediaplayer.ACTION_NEXT";
-    public static final String ACTION_PREV = "com.nmediaplayer.ACTION_PREV";
-    public static final String ACTION_STOP = "com.nmediaplayer.ACTION_STOP";
-    
+
+    // Receiver per ascoltare i messaggi dal Service (es. "Next", "Prev", "Song Finished")
     private BroadcastReceiver mediaActionReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -62,6 +54,7 @@ public class MediaPlugin extends Plugin {
             if (action != null) {
                 JSObject ret = new JSObject();
                 ret.put("action", action);
+                // Notifichiamo Vue: "notificationAction"
                 notifyListeners("notificationAction", ret);
             }
         }
@@ -70,6 +63,7 @@ public class MediaPlugin extends Plugin {
     @Override
     public void load() {
         super.load();
+        // Registriamo il receiver per ascoltare il Service
         IntentFilter filter = new IntentFilter("com.nmediaplayer.MEDIA_ACTION");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             getContext().registerReceiver(mediaActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
@@ -86,10 +80,9 @@ public class MediaPlugin extends Plugin {
         } catch (Exception e) {
             Log.e(TAG, "Error unregistering receiver", e);
         }
-        if (mediaPlayer != null) {
-            mediaPlayer.release();
-        }
     }
+
+    // --- METODI DI RIPRODUZIONE (Ora delegati al Service) ---
 
     @PluginMethod
     public void play(PluginCall call) {
@@ -97,114 +90,86 @@ public class MediaPlugin extends Plugin {
         String title = call.getString("title", "Unknown");
         String artist = call.getString("artist", "Unknown Artist");
         
+        // Dati per la prossima canzone (Preload)
+        String nextPath = call.getString("nextPath");
+        String nextTitle = call.getString("nextTitle");
+        String nextArtist = call.getString("nextArtist");
+        
         if (path == null || path.isEmpty()) {
             call.reject("Invalid path");
             return;
         }
 
         try {
-            if (mediaPlayer != null) {
-                mediaPlayer.release();
+            Intent intent = new Intent(getContext(), MusicPlayerService.class);
+            intent.setAction(MusicPlayerService.ACTION_PLAY);
+            intent.putExtra(MusicPlayerService.EXTRA_PATH, path);
+            intent.putExtra(MusicPlayerService.EXTRA_TITLE, title);
+            intent.putExtra(MusicPlayerService.EXTRA_ARTIST, artist);
+            
+            if (nextPath != null) {
+                intent.putExtra(MusicPlayerService.EXTRA_NEXT_PATH, nextPath);
+                intent.putExtra(MusicPlayerService.EXTRA_NEXT_TITLE, nextTitle);
+                intent.putExtra(MusicPlayerService.EXTRA_NEXT_ARTIST, nextArtist);
             }
 
-            mediaPlayer = new MediaPlayer();
-            mediaPlayer.setDataSource(path);
-            
-            mediaPlayer.setOnCompletionListener(mp -> {
-                JSObject ret = new JSObject();
-                ret.put("action", ACTION_NEXT);
-                notifyListeners("notificationAction", ret);
-            });
-
-            mediaPlayer.prepare();
-            mediaPlayer.setWakeMode(getContext(), android.os.PowerManager.PARTIAL_WAKE_LOCK);
-            mediaPlayer.start();
-
-            isPaused = false;
-            currentSongTitle = title;
-            currentSongArtist = artist;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getContext().startForegroundService(intent);
+            } else {
+                getContext().startService(intent);
+            }
             
             call.resolve();
         } catch (Exception e) {
-            call.reject("Failed to play audio: " + e.getMessage());
-        }
-    }
-
-    @PluginMethod
-    public void stop(PluginCall call) {
-        try {
-            if (mediaPlayer != null) {
-                if (mediaPlayer.isPlaying()) {
-                    mediaPlayer.stop();
-                }
-                mediaPlayer.release();
-                mediaPlayer = null;
-            }
-            isPaused = false;
-            currentSongTitle = "";
-            currentSongArtist = "";
-            call.resolve();
-        } catch (Exception e) {
-            call.reject("Failed to stop audio: " + e.getMessage());
+            call.reject("Failed to start service: " + e.getMessage());
         }
     }
 
     @PluginMethod
     public void pause(PluginCall call) {
-        try {
-            if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-                mediaPlayer.pause();
-                isPaused = true;
-                call.resolve();
-            } else {
-                call.reject("No audio is playing");
-            }
-        } catch (Exception e) {
-            call.reject("Pause failed: " + e.getMessage());
-        }
+        sendCommand(MusicPlayerService.ACTION_PAUSE);
+        call.resolve();
     }
 
     @PluginMethod
     public void resume(PluginCall call) {
-        try {
-            if (mediaPlayer == null) {
-                call.reject("No media player initialized");
-                return;
-            }
-            if (!mediaPlayer.isPlaying()) {
-                mediaPlayer.start();
-                isPaused = false;
-                call.resolve();
-            } else {
-                call.resolve();
-            }
-        } catch (Exception e) {
-            call.reject("Resume failed: " + e.getMessage());
-        }
+        sendCommand(MusicPlayerService.ACTION_RESUME);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void stop(PluginCall call) {
+        sendCommand(MusicPlayerService.ACTION_STOP);
+        call.resolve();
     }
 
     @PluginMethod
     public void seek(PluginCall call) {
-        Integer positionSec = call.getInt("position");
-        if (mediaPlayer == null || positionSec == null) {
-            call.reject("Invalid media player or position");
+        Double posDouble = call.getDouble("position");
+        
+        if (posDouble == null) {
+            call.reject("Invalid position");
             return;
         }
 
-        int durationMs = mediaPlayer.getDuration();
-        int positionMs = positionSec * 1000;
-        if (positionMs < 0 || positionMs > durationMs) {
-            call.reject("Position out of range");
-            return;
-        }
+        int positionSec = posDouble.intValue();
 
-        try {
-            mediaPlayer.seekTo(positionMs);
-            call.resolve();
-        } catch (Exception e) {
-            call.reject("Seek failed: " + e.getMessage());
-        }
+        Intent intent = new Intent(getContext(), MusicPlayerService.class);
+        intent.setAction(MusicPlayerService.ACTION_SEEK);
+        intent.putExtra(MusicPlayerService.EXTRA_POSITION, positionSec);
+        
+        getContext().startService(intent);
+        
+        call.resolve();
     }
+
+    private void sendCommand(String action) {
+        Intent intent = new Intent(getContext(), MusicPlayerService.class);
+        intent.setAction(action);
+        getContext().startService(intent);
+    }
+
+    // --- GESTIONE PERMESSI ---
 
     @PluginMethod
     public void checkPermissions(PluginCall call) {
@@ -228,96 +193,7 @@ public class MediaPlugin extends Plugin {
         }
     }
 
-    @PluginMethod
-    public void startMusicNotification(PluginCall call) {
-        String title = call.getString("title", "No song playing");
-        String artist = call.getString("artist", "Unknown Artist");
-        Boolean isPlaying = call.getBoolean("isPlaying", true);
-        
-        if (Build.VERSION.SDK_INT >= 33) {
-            if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                Log.e(TAG, "Manca il permesso POST_NOTIFICATIONS! La notifica non apparirà.");
-            }
-        }
-
-        try {
-            Context context = getContext();
-            Intent serviceIntent = new Intent(context, MusicPlayerService.class);
-            serviceIntent.setAction(MusicPlayerService.ACTION_START_FOREGROUND);
-            serviceIntent.putExtra(MusicPlayerService.EXTRA_TITLE, title);
-            serviceIntent.putExtra(MusicPlayerService.EXTRA_ARTIST, artist);
-            serviceIntent.putExtra(MusicPlayerService.EXTRA_IS_PLAYING, isPlaying);
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent);
-            } else {
-                context.startService(serviceIntent);
-            }
-            
-            call.resolve();
-        } catch (Exception e) {
-            call.reject("Failed to start notification: " + e.getMessage());
-        }
-    }
-
-    @PluginMethod
-    public void updateMusicNotification(PluginCall call) {
-        String title = call.getString("title");
-        String artist = call.getString("artist");
-        Boolean isPlaying = call.getBoolean("isPlaying");
-        
-        if (title != null) currentSongTitle = title;
-        if (artist != null) currentSongArtist = artist;
-        
-        try {
-            Context context = getContext();
-            Intent serviceIntent = new Intent(context, MusicPlayerService.class);
-            serviceIntent.setAction(MusicPlayerService.ACTION_UPDATE_NOTIFICATION);
-            serviceIntent.putExtra(MusicPlayerService.EXTRA_TITLE, currentSongTitle);
-            serviceIntent.putExtra(MusicPlayerService.EXTRA_ARTIST, currentSongArtist);
-            if (isPlaying != null) {
-                serviceIntent.putExtra(MusicPlayerService.EXTRA_IS_PLAYING, isPlaying);
-            }
-            
-            context.startService(serviceIntent);
-            call.resolve();
-        } catch (Exception e) {
-            call.reject("Failed to update notification: " + e.getMessage());
-        }
-    }
-
-    @PluginMethod
-    public void stopMusicNotification(PluginCall call) {
-        try {
-            Context context = getContext();
-            Intent serviceIntent = new Intent(context, MusicPlayerService.class);
-            serviceIntent.setAction(MusicPlayerService.ACTION_STOP_FOREGROUND);
-            context.startService(serviceIntent);
-            call.resolve();
-        } catch (Exception e) {
-            call.reject("Failed to stop notification: " + e.getMessage());
-        }
-    }
-
-    @PluginMethod
-    public void updateNotification(PluginCall call) {
-        updateMusicNotification(call);
-    }
-
-    @PluginMethod
-    public void handleNotificationAction(PluginCall call) {
-        String action = call.getString("action");
-        if (action == null) {
-            call.reject("No action provided");
-            return;
-        }
-
-        JSObject result = new JSObject();
-        result.put("action", action);
-        notifyListeners("notificationAction", result);
-        
-        call.resolve(result);
-    }
+    // --- METODI GESTIONE DATI (Songs, Playlists) - Questi rimangono invariati ---
 
     @PluginMethod
     public void getSongs(PluginCall call) {
@@ -328,7 +204,8 @@ public class MediaPlugin extends Plugin {
                 MediaStore.Audio.Media._ID,
                 MediaStore.Audio.Media.TITLE,
                 MediaStore.Audio.Media.ARTIST,
-                MediaStore.Audio.Media.DATA
+                MediaStore.Audio.Media.DATA,
+                MediaStore.Audio.Media.DURATION
         };
 
         String selection = MediaStore.Audio.Media.IS_MUSIC + " != 0";
@@ -343,6 +220,8 @@ public class MediaPlugin extends Plugin {
                 song.put("title", cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)));
                 song.put("artist", cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)));
                 song.put("path", cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)));
+                // Aggiungiamo anche la durata se disponibile nel DB
+                song.put("duration", cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)) / 1000.0);
                 songs.put(song);
             }
             cursor.close();
@@ -432,6 +311,27 @@ public class MediaPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getPlaybackStatus(PluginCall call) {
+        JSObject ret = new JSObject();
+        
+        MusicPlayerService service = MusicPlayerService.getInstance();
+
+        if (service != null) {
+        
+            double currentPosSeconds = service.getCurrentPosition() / 1000.0;
+            boolean isPlaying = service.isPlaying();
+
+            ret.put("currentTime", currentPosSeconds);
+            ret.put("isPlaying", isPlaying);
+        } else {
+            ret.put("currentTime", 0);
+            ret.put("isPlaying", false);
+        }
+        
+        call.resolve(ret);
+    }
+
+    @PluginMethod
     public void getPlaylistSongs(PluginCall call) {
         String path = call.getString("path");
         if (path == null || path.isEmpty()) {
@@ -466,20 +366,13 @@ public class MediaPlugin extends Plugin {
                 while (keys.hasNext()) {
                     String key = keys.next();
                     Object value = songObj.get(key);
-
-                    if (value instanceof String) {
-                        song.put(key, (String) value);
-                    } else if (value instanceof Integer) {
-                        song.put(key, (Integer) value);
-                    } else if (value instanceof Long) {
-                        song.put(key, (Long) value);
-                    } else if (value instanceof Double) {
-                        song.put(key, (Double) value);
-                    } else if (value instanceof Boolean) {
-                        song.put(key, (Boolean) value);
-                    } else {
-                        song.put(key, value.toString());
-                    }
+                    // Semplice mapping dei tipi
+                    if (value instanceof String) song.put(key, (String) value);
+                    else if (value instanceof Integer) song.put(key, (Integer) value);
+                    else if (value instanceof Long) song.put(key, (Long) value);
+                    else if (value instanceof Double) song.put(key, (Double) value);
+                    else if (value instanceof Boolean) song.put(key, (Boolean) value);
+                    else song.put(key, value.toString());
                 }
                 songs.put(song);
             }
@@ -539,72 +432,29 @@ public class MediaPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void updatePlaylistQueue(PluginCall call) {
-        String path = call.getString("path");
-        JSArray queue = call.getArray("queue");
-
-        if (path == null || path.isEmpty() || queue == null) {
-            call.reject("Invalid path or queue");
-            return;
-        }
-
-        File file = new File(path);
-        if (!file.exists()) {
-            call.reject("Playlist file not found");
+    public void removePlaylist(PluginCall call) {
+        String name = call.getString("name");
+        if (name == null || name.isEmpty()) {
+            call.reject("Invalid playlist name");
             return;
         }
 
         try {
-            StringBuilder content = new StringBuilder();
-            BufferedReader br = new BufferedReader(new FileReader(file));
-            String line;
-            while ((line = br.readLine()) != null) {
-                content.append(line);
-            }
-            br.close();
+            File dir = getContext().getFilesDir();
+            String filename = name.replaceAll("\\s+", "_") + ".json";
+            File file = new File(dir, filename);
 
-            JSONObject playlist = new JSONObject(content.toString());
-            JSONArray songs = playlist.getJSONArray("songs");
-
-            JSONObject[] songMap = new JSONObject[songs.length()];
-            for (int i = 0; i < songs.length(); i++) {
-                JSONObject song = songs.getJSONObject(i);
-                int queueId = song.optInt("queueId", i+1);
-                if (queueId > 0 && queueId <= songs.length()) {
-                    songMap[queueId - 1] = song;
+            if (file.exists()) {
+                if (file.delete()) {
+                    call.resolve();
+                } else {
+                    call.reject("Failed to delete playlist file");
                 }
+            } else {
+                call.reject("Playlist not found");
             }
-
-            JSONArray newSongs = new JSONArray();
-            for (int i = 0; i < queue.length(); i++) {
-                JSONObject q = queue.getJSONObject(i);
-                int newQueueId = q.getInt("queueId");
-                String songPath = q.getString("path");
-
-                JSONObject matchingSong = null;
-                for (JSONObject s : songMap) {
-                    if (s != null && s.optString("path").equals(songPath)) {
-                        matchingSong = s;
-                        break;
-                    }
-                }
-
-                if (matchingSong != null) {
-                    matchingSong.put("queueId", newQueueId);
-                    newSongs.put(matchingSong);
-                }
-            }
-
-            playlist.put("songs", newSongs);
-
-            try (FileWriter writer = new FileWriter(file)) {
-                writer.write(playlist.toString(2));
-            }
-
-            call.resolve();
-
         } catch (Exception e) {
-            call.reject("Failed to update playlist queue: " + e.getMessage());
+            call.reject("Error removing playlist: " + e.getMessage());
         }
     }
 
@@ -629,49 +479,5 @@ public class MediaPlugin extends Plugin {
             call.reject("Failed to get song info: " + e.getMessage());
         }
     }
-
-    @PluginMethod
-    public void getPlaybackStatus(PluginCall call) {
-        JSObject result = new JSObject();
-        if (mediaPlayer != null && mediaPlayer.isPlaying()) {
-            result.put("isPlaying", true);
-            result.put("currentTime", mediaPlayer.getCurrentPosition() / 1000.0);
-        } else if (mediaPlayer != null && isPaused) {
-            result.put("isPlaying", false);
-            result.put("currentTime", mediaPlayer.getCurrentPosition() / 1000.0);
-        } else {
-            result.put("isPlaying", false);
-            result.put("currentTime", 0);
-        }
-        call.resolve(result);
-    }
-
-    @PluginMethod
-    public void removePlaylist(PluginCall call) {
-        String name = call.getString("name");
-        if (name == null || name.isEmpty()) {
-            call.reject("Invalid playlist name");
-            return;
-        }
-
-        try {
-            File dir = getContext().getFilesDir();
-            String filename = name.replaceAll("\\s+", "_") + ".json";
-            File file = new File(dir, filename);
-
-            if (file.exists()) {
-                boolean deleted = file.delete();
-                if (deleted) {
-                    call.resolve();
-                } else {
-                    call.reject("Failed to delete playlist");
-                }
-            } else {
-                call.reject("Playlist not found");
-            }
-
-        } catch (Exception e) {
-            call.reject("Error removing playlist: " + e.getMessage());
-        }
-    }
+    
 }
