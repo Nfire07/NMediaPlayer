@@ -1,10 +1,10 @@
 <template>
   <div class="song-loader">
-    <div v-if="loading" class="loading">🔄 Loading songs...</div>
-    <div v-else-if="error" class="error">❌ Error: {{ error }}</div>
+    <div v-if="loading" class="loading">Loading songs...</div>
+    <div v-else-if="error" class="error">Error: {{ error }}</div>
     <div v-else>
       <slot v-if="Array.isArray(songs)" :songs="songs"></slot>
-      <div v-else class="error">⚠️ No Data Found.</div>
+      <div v-else class="error">No Data Found.</div>
     </div>
   </div>
 </template>

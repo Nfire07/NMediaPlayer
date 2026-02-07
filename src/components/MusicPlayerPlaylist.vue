@@ -7,6 +7,7 @@
         type="range"
         min="0"
         :max="duration"
+        step="1"
         v-model="currentTime"
         @input="onSeekInput"
         @change="onSeekChange"
@@ -60,17 +61,21 @@ const duration = ref(0)
 const currentTime = ref(0)
 const intervalId = ref(null)
 const notificationListener = ref(null)
-
 const isSeeking = ref(false)
 
 const currentSongTitle = computed(() => playerStore.currentSong?.title || "No song playing")
 
 watch(() => props.songs, async (newSongs) => {
-  if (newSongs.length > 0) {
-    playerStore.setPlaylist(newSongs, props.initialIndex, props.isShuffleModeOn)
-    await playerStore.playSong(newSongs[props.initialIndex], props.initialIndex)
+  if (newSongs && newSongs.length > 0) {
+    await playerStore.setPlaylist(newSongs, props.initialIndex, props.isShuffleModeOn);
+    
+    setTimeout(async () => {
+        if (!playerStore.isPlaying) {
+             await playerStore.playSong(newSongs[props.initialIndex], props.initialIndex);
+        }
+    }, 100);
   }
-}, { immediate: true })
+}, { immediate: true });
 
 watch(() => playerStore.currentSong, async (newSong) => {
   if (newSong) {
@@ -80,7 +85,6 @@ watch(() => playerStore.currentSong, async (newSong) => {
       const info = await MediaPlugin.getSongInfo({ path: newSong.path })
       duration.value = info.duration || 0
     } catch (e) {
-      console.error('Error info:', e)
       duration.value = newSong.duration || 0; 
     }
     
@@ -96,19 +100,16 @@ function startProgress() {
 
     try {
       const status = await MediaPlugin.getPlaybackStatus()
-      
       const nativeTime = status.currentTime || 0
       currentTime.value = nativeTime
 
       if (playerStore.isPlaying !== status.isPlaying) {
         playerStore.isPlaying = status.isPlaying
       }
-    } catch (e) {
-    }
+    } catch (e) {}
   }, 1000) 
 }
 
-// Handler UI
 async function handlePlayPause() {
   if (playerStore.isPlaying) {
     await playerStore.pause()
@@ -120,15 +121,12 @@ async function handlePlayPause() {
 async function handleNext() { await playerStore.next() }
 async function handlePrevious() { await playerStore.previous() }
 
-// --- Gestione SEEK (Barra di avanzamento) ---
-
 function onSeekInput() {
   isSeeking.value = true
 }
 
 async function onSeekChange() {
   await MediaPlugin.seek({ position: Math.floor(currentTime.value) })
-  
   setTimeout(() => {
     isSeeking.value = false
   }, 500)
@@ -144,26 +142,28 @@ function formatTime(seconds) {
 onMounted(async () => {
   try {
     await MediaPlugin.checkPermissions()
-  } catch (e) {
-    console.log("Permission check skipped or failed", e)
-  }
+  } catch (e) {}
   
   try {
     await KeepAwake.keepAwake()
-  } catch(e) { console.error(e) }
+  } catch(e) {}
 
-  notificationListener.value = await MediaPlugin.addListener('notificationAction', (data) => {
-    console.log('Action received from Native:', data.action)
-    
-    playerStore.handleNotificationAction(data.action)
-  })
+  try {
+    notificationListener.value = await MediaPlugin.addListener('notificationAction', (data) => {
+      playerStore.handleNotificationAction(data) 
+    })
+  } catch (e) {}
   
   startProgress()
 })
 
 onBeforeUnmount(async () => {
   if (intervalId.value) clearInterval(intervalId.value)
-  if (notificationListener.value) notificationListener.value.remove()
+  if (notificationListener.value) {
+      try {
+          await notificationListener.value.remove()
+      } catch (e) {}
+  }
   try {
     await KeepAwake.allowSleep()
   } catch(e) {}
@@ -187,6 +187,7 @@ onBeforeUnmount(async () => {
   font-size: 2rem;
   text-align: center;
   white-space: nowrap;
+  text-wrap: wrap;
   overflow: hidden;
   text-overflow: ellipsis;
   width: 100%;

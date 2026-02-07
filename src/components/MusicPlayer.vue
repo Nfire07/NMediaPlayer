@@ -8,7 +8,8 @@
         min="0"
         :max="duration"
         v-model="currentTime"
-        @input="seek"
+        @input="onSeekInput"
+        @change="onSeekChange"
         class="progress-bar"
       />
       <div class="time-info">
@@ -41,7 +42,6 @@
 <script>
 import { MediaPlugin } from '@/plugins/MediaPlugin'
 
-
 export default {
   name: "MusicPlayer",
   props: {
@@ -56,9 +56,9 @@ export default {
       duration: 0,
       currentTime: 0,
       intervalId: null,
+      isSeeking: false,
     }
   },
-  computed:{},
   watch: {
     currentSong: {
       immediate: true,
@@ -80,87 +80,85 @@ export default {
         this.isPlaying = true;
         this.currentTime = 0;
 
-        const info = await MediaPlugin.getSongInfo({ path });
-        this.duration = info.duration || 0;
+        try {
+            const info = await MediaPlugin.getSongInfo({ path });
+            this.duration = info.duration || 0;
+        } catch (e) {
+            this.duration = 0;
+        }
 
         this.startProgress();
-      } catch (e) {
-        alert("An Error occured while playing" + e.message);
-      }
+      } catch (e) {}
     },
+
     startProgress() {
       if (this.intervalId) clearInterval(this.intervalId);
       this.intervalId = setInterval(async () => {
+        if (this.isSeeking) return;
+
         try {
           const status = await MediaPlugin.getPlaybackStatus();
           this.currentTime = status.currentTime || 0;
           this.isPlaying = status.isPlaying;
-          if (this.currentTime >= this.duration) {
+          
+          if (this.currentTime >= this.duration && this.duration > 0) {
             this.currentTime = this.duration;
-            await this.stop();
+            this.isPlaying = false;
           }
         } catch {}
-      }, 500);
+      }, 1000);
     },
+
     async stop() {
       if (this.intervalId) clearInterval(this.intervalId);
       this.isPlaying = false;
       this.currentTime = 0;
       this.duration = 0;
-      await MediaPlugin.stop();
+      try {
+        await MediaPlugin.stop();
+      } catch (e) {}
     },
-   async togglePlayPause() {
+
+    async togglePlayPause() {
       try {
         if (this.isPlaying) {
           await MediaPlugin.pause();
           this.isPlaying = false;
         } else {
-          if (this.currentTime >= this.duration) {
-            this.currentTime = 0;
-            await MediaPlugin.seek({ position: 0 });
-            await MediaPlugin.play({ path: this.currentSong.path });
-          } else {
-            try {
-              await MediaPlugin.resume();
-            } catch {
-              await MediaPlugin.play({ path: this.currentSong.path });
-              this.currentTime = 0;
-            }
+          try {
+             await MediaPlugin.resume();
+          } catch {
+             if (this.currentSong && this.currentSong.path) {
+                 await MediaPlugin.play({ path: this.currentSong.path });
+             }
           }
           this.isPlaying = true;
         }
-      } catch (e) {
-        alert("Playback error: " + e.message);
-      }
+      } catch (e) {}
     },
-    async seek() {
+
+    onSeekInput() {
+      this.isSeeking = true;
+    },
+
+    async onSeekChange() {
       const position = Math.floor(this.currentTime);
-
-      if (
-        typeof position !== "number" ||
-        isNaN(position) ||
-        position < 0 ||
-        position > this.duration
-      ) {
-        console.warn("Invalid seek position:", position);
-        return;
-      }
-
       try {
-        await MediaPlugin.seek({ position }); 
-      } catch (e) {
-        console.error("Seek failed:", e.message);
-      }
+        await MediaPlugin.seek({ position });
+      } catch (e) {}
+      
+      setTimeout(() => {
+          this.isSeeking = false;
+      }, 500);
     },
+
     formatTime(seconds) {
-      const m = Math.floor(seconds / 60)
-        .toString()
-        .padStart(2, "0");
-      const s = Math.floor(seconds % 60)
-        .toString()
-        .padStart(2, "0");
+      if (!seconds || isNaN(seconds)) return "00:00";
+      const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const s = Math.floor(seconds % 60).toString().padStart(2, "0");
       return `${m}:${s}`;
     },
+
     handleReturnToList() {
       this.stop(); 
       this.$emit('returnToList'); 
@@ -170,7 +168,6 @@ export default {
     if (this.intervalId) clearInterval(this.intervalId);
   },
 }
-
 </script>
 
 <style scoped>
@@ -216,7 +213,6 @@ export default {
   }
 }
 
-/* Progress Bar */
 .progress-container {
   width: 100%;
   display: flex;
@@ -254,7 +250,6 @@ export default {
   color: #fefefe;
 }
 
-/* Controlli Row */
 .controls-row {
   display: flex;
   align-items: center;
@@ -263,7 +258,6 @@ export default {
   width: 100%;
 }
 
-/* Pulsante Play/Pause Centrale (Grande) */
 .pause-button {
   width: 100px; 
   height: 100px;
@@ -291,12 +285,10 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Allineamento ottico per il triangolo Play */
   margin-left: v-bind("!isPlaying ? '6px' : '0px'"); 
   filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
 }
 
-/* Pulsanti Avanti/Indietro */
 .arrow-button {
   width: 65px;
   height: 65px;
@@ -323,7 +315,6 @@ export default {
   opacity: 0.3;
 }
 
-/* Pulsante Ritorno */
 .return-button {
   width: 60%;
   height: 60px; 
