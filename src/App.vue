@@ -69,6 +69,21 @@ export default {
 </script>
 
 <style>
+    :root {
+        --card-bg-color: rgba(255, 255, 255, 0.85);
+        --card-text-color: #2c3e50;
+        --title-color: #fff;
+    }
+
+    body.dark {
+        background: linear-gradient(30deg, #121211 0%, #363636 100%);
+        color: #fff;
+        
+        --card-bg-color: #1a1a1a;
+        --card-text-color: #fff;
+        --title-color: #fff;
+    }
+
     html, body {
         margin: 0;
         padding: 0;
@@ -79,10 +94,7 @@ export default {
         font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
         flex-direction: column;
     }   
-    body.dark {
-        background: linear-gradient(30deg, #121211 0%, #363636 100%);
-        color: #fff;
-    }
+    
     .layout {
         display: flex;
         flex-direction: column;

@@ -43,7 +43,6 @@ export default {
   margin: 0 auto;
   padding: 2vh 5vw;
   box-sizing: border-box;
-  color: white;
 }
 
 #title {
@@ -52,6 +51,7 @@ export default {
   margin-bottom: 2vh;
   animation: enter-from-top 700ms ease-in-out;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  color: var(--title-color);
 }
 
 .buttons-wrapper {
@@ -72,12 +72,13 @@ export default {
   background-clip: padding-box, border-box;
   background-origin: padding-box, border-box;
   
-  color: #fff;
+  color: var(--card-text-color);
+  
   font-weight: 800;
   font-size: clamp(18px, 2.5vw, 22px);
   text-align: center;
   cursor: pointer;
-  transition: transform 0.2s ease, filter 0.2s ease;
+  transition: transform 0.2s ease, filter 0.2s ease, color 0.3s ease, background 0.3s ease;
   
   animation: enter-from-top 0.8s ease-in-out, neon-pulse 3s infinite alternate;
   
@@ -98,14 +99,14 @@ export default {
   --gradient: linear-gradient(130deg, #00cbcf 0%, #fdbb2d 100%);
   --shadow-color: rgba(0, 203, 207, 0.7);
 
-  background-image: linear-gradient(#1a1a1a, #1a1a1a), var(--gradient);
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), var(--gradient);
 }
 
 .playlists {
   --gradient: linear-gradient(130deg, #8743b4 0%, #df1f1f 50%, #eea744 100%);
   --shadow-color: rgba(223, 31, 31, 0.7);
 
-  background-image: linear-gradient(#1a1a1a, #1a1a1a), var(--gradient);
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), var(--gradient);
   animation-delay: 100ms, 0s;
 }
 
@@ -113,7 +114,7 @@ export default {
   --gradient: linear-gradient(130deg, #2f9ceb 0%, #944ccf 100%);
   --shadow-color: rgba(47, 156, 235, 0.7);
 
-  background-image: linear-gradient(#1a1a1a, #1a1a1a), var(--gradient);
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), var(--gradient);
   animation-delay: 200ms, 0s;
 }
 

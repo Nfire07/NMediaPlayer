@@ -222,7 +222,7 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #fff;
+  color: inherit;
 }
 
 .song-artist {
@@ -231,7 +231,7 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0.7;
-  color: #ccc;
+  color: inherit;
 }
 
 .play-indicator {

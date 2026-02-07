@@ -397,6 +397,7 @@ export default {
   text-align: center;
   margin: 0;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  color: var(--title-color);
 }
 
 .playlist-container, .songs-container {
@@ -422,6 +423,7 @@ export default {
   align-items: center;
   gap: 1rem;
   transition: background 0.2s;
+  color: var(--card-text-color);
 }
 
 .playlist-item:hover {
@@ -451,7 +453,7 @@ export default {
   border-radius: 10px;
   font-size: 1.1rem;
   cursor: pointer;
-  color: #fff;
+  color: var(--card-text-color);
   transition: all 0.3s ease;
   border: 2px solid transparent;
   background-clip: padding-box, border-box;
@@ -467,7 +469,7 @@ export default {
 }
 
 .open-button { 
-  background-image: linear-gradient(#1e1e1e, #1e1e1e), linear-gradient(135deg, #4e9aff, #23f9d5);
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), linear-gradient(135deg, #4e9aff, #23f9d5);
   box-shadow: 0 0 8px rgba(35, 249, 213, 0.25);
 }
 .open-button:hover {
@@ -476,7 +478,7 @@ export default {
 }
 
 .shuffle-button { 
-  background-image: linear-gradient(#1e1e1e, #1e1e1e), linear-gradient(135deg, #c131c4, #9e04a0);
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), linear-gradient(135deg, #c131c4, #9e04a0);
   box-shadow: 0 0 8px rgba(193, 49, 196, 0.25);
 }
 .shuffle-button:hover {
@@ -484,7 +486,7 @@ export default {
 }
 
 .edit-button { 
-  background-image: linear-gradient(#1e1e1e, #1e1e1e), linear-gradient(135deg, #ff9a44, #fc6076);
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), linear-gradient(135deg, #ff9a44, #fc6076);
   box-shadow: 0 0 8px rgba(255, 154, 68, 0.25);
 }
 .edit-button:hover {
@@ -492,7 +494,7 @@ export default {
 }
 
 .remove-button { 
-  background-image: linear-gradient(#1e1e1e, #1e1e1e), linear-gradient(135deg, #ff4e51, #f9d523);
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), linear-gradient(135deg, #ff4e51, #f9d523);
   box-shadow: 0 0 8px rgba(255, 78, 81, 0.25);
 }
 .remove-button:hover {
@@ -512,6 +514,7 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--title-color);
 }
 
 .edit-controls {
@@ -526,7 +529,7 @@ export default {
     border-radius: 20px;
     border: 1px solid rgba(255,255,255,0.2);
     background: transparent;
-    color: #aaa;
+    color: var(--card-text-color);
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 600;
@@ -559,10 +562,10 @@ export default {
     width: 100%;
     padding: 10px;
     margin: 10px 0;
-    background: rgba(255,255,255,0.1);
+    background: var(--card-bg-color);
     border: 1px solid rgba(255,255,255,0.2);
     border-radius: 8px;
-    color: white;
+    color: var(--card-text-color);
     font-size: 1rem;
 }
 
@@ -613,6 +616,7 @@ export default {
   display: flex;
   align-items: center;
   cursor: pointer;
+  color: var(--card-text-color);
 }
 
 .song-item.selectable {
@@ -686,6 +690,7 @@ export default {
   padding: 2rem;
   font-style: italic;
   opacity: 0.6;
+  color: var(--card-text-color);
 }
 
 .back-button {
