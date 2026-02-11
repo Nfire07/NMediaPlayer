@@ -24,11 +24,12 @@
         class="arrow-button" 
         :disabled="!playerStore.hasPrev" 
         @click="handlePrevious"
+        :aria-label="ui.prev"
       >
         <i class="bi bi-skip-start-fill"></i>
       </button>
 
-      <button class="pause-button" @click="handlePlayPause">
+      <button class="pause-button" @click="handlePlayPause" :aria-label="playerStore.isPlaying ? ui.pause : ui.play">
         <i class="bi bi-caret-right-fill" v-if="!playerStore.isPlaying"></i>
         <i class="bi bi-pause" v-else></i>
       </button>
@@ -37,6 +38,7 @@
         class="arrow-button" 
         :disabled="!playerStore.hasNext" 
         @click="handleNext"
+        :aria-label="ui.next"
       >
         <i class="bi bi-skip-end-fill"></i>
       </button>
@@ -53,8 +55,26 @@ import { KeepAwake } from '@capacitor-community/keep-awake'
 const props = defineProps({
   songs: { type: Array, default: () => [] },
   initialIndex: { type: Number, default: 0 },
-  isShuffleModeOn: { type: Boolean, default: false }
+  isShuffleModeOn: { type: Boolean, default: false },
+  currentLang: { type: String, default: 'it' }
 })
+
+const STRINGS = {
+  it: {
+    noSong: 'Nessun brano in riproduzione',
+    play: 'Riproduci',
+    pause: 'Pausa',
+    next: 'Prossimo',
+    prev: 'Precedente'
+  },
+  en: {
+    noSong: 'No song playing',
+    play: 'Play',
+    pause: 'Pause',
+    next: 'Next',
+    prev: 'Previous'
+  }
+}
 
 const playerStore = useMusicPlayerStore()
 const duration = ref(0)
@@ -63,7 +83,9 @@ const intervalId = ref(null)
 const notificationListener = ref(null)
 const isSeeking = ref(false)
 
-const currentSongTitle = computed(() => playerStore.currentSong?.title || "No song playing")
+const ui = computed(() => props.currentLang === 'en' ? STRINGS.en : STRINGS.it)
+
+const currentSongTitle = computed(() => playerStore.currentSong?.title || ui.value.noSong)
 
 watch(() => props.songs, async (newSongs) => {
   if (newSongs && newSongs.length > 0) {

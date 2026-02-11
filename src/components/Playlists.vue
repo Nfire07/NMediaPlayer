@@ -4,12 +4,12 @@
       
       <div v-if="!selectedPlaylist" class="view-container">
         <h2 class="page-title">
-          Your Playlists <i class="bi bi-view-list"></i>
+          {{ strings.title }} <i class="bi bi-view-list"></i>
         </h2>
 
         <div class="playlist-container">
-          <div v-if="loading" class="loading-text">Loading playlists...</div>
-          <div v-else-if="playlists.length === 0" class="no-playlists">No playlists found.</div>
+          <div v-if="loading" class="loading-text">{{ strings.loadingPlaylists }}</div>
+          <div v-else-if="playlists.length === 0" class="no-playlists">{{ strings.noPlaylists }}</div>
           <ul v-else class="playlist-list">
             <li v-for="playlist in playlists" :key="playlist.path" class="playlist-item">
               <span class="playlist-inline-title">{{ playlist.name }}</span>
@@ -41,17 +41,17 @@
           <h3 class="playlist-title">{{ selectedPlaylist.name }}</h3>
           <div class="edit-controls" v-if="isEditMode">
              <button class="mode-btn add" :class="{ active: editAction === 'add' }" @click="setEditAction('add')">
-               <i class="bi bi-plus-lg"></i> Add
+               <i class="bi bi-plus-lg"></i> {{ strings.add }}
              </button>
              <button class="mode-btn remove" :class="{ active: editAction === 'remove' }" @click="setEditAction('remove')">
-               <i class="bi bi-dash-lg"></i> Remove
+               <i class="bi bi-dash-lg"></i> {{ strings.remove }}
              </button>
           </div>
         </div>
 
         <div v-if="isEditMode && editAction === 'add'" class="add-songs-container">
-            <input type="text" v-model="searchQuery" placeholder="Search available tracks..." class="search-input"/>
-            <div v-if="loadingAvailable" class="loading-text">Loading tracks...</div>
+            <input type="text" v-model="searchQuery" :placeholder="strings.searchPlaceholder" class="search-input"/>
+            <div v-if="loadingAvailable" class="loading-text">{{ strings.loadingTracks }}</div>
             <ul v-else class="songs-list select-list">
                 <li 
                   v-for="song in filteredAvailableSongs" 
@@ -62,7 +62,7 @@
                 >
                     <div class="song-info">
                         <div class="song-title">{{ song.title }}</div>
-                        <div class="song-artist">{{ song.artist || 'Unknown' }}</div>
+                        <div class="song-artist">{{ song.artist || strings.unknownArtist }}</div>
                     </div>
                     <div class="checkbox-indicator">
                         <i class="bi bi-check-lg" v-if="songsToAdd.some(s => s.path === song.path)"></i>
@@ -71,14 +71,14 @@
             </ul>
             <div class="confirm-actions">
                  <button class="confirm-btn" @click="confirmAddSongs" :disabled="songsToAdd.length === 0">
-                    Confirm Add ({{ songsToAdd.length }})
+                    {{ strings.confirmAdd }} ({{ songsToAdd.length }})
                  </button>
             </div>
         </div>
 
         <div v-else class="songs-container">
-          <div v-if="songsLoading" class="loading-text">Loading songs...</div>
-          <div v-else-if="playlistSongs.length === 0" class="no-songs">No songs in this playlist.</div>
+          <div v-if="songsLoading" class="loading-text">{{ strings.loadingSongs }}</div>
+          <div v-else-if="playlistSongs.length === 0" class="no-songs">{{ strings.noSongsInPlaylist }}</div>
 
           <ul v-else class="songs-list">
             <li
@@ -99,7 +99,7 @@
 
               <div class="song-info">
                 <div class="song-title">{{ song.title }}</div>
-                <div class="song-artist">{{ song.artist }}</div>
+                <div class="song-artist">{{ song.artist || strings.unknownArtist }}</div>
               </div>
             </li>
           </ul>
@@ -107,7 +107,7 @@
       </div>
 
       <button class="back-button" @click="goBack">
-        <i class="bi bi-arrow-left"></i> {{ selectedPlaylist ? 'Back' : 'Return to menu' }}
+        <i class="bi bi-arrow-left"></i> {{ selectedPlaylist ? strings.back : strings.returnToMenu }}
       </button>
     </template>
 
@@ -121,7 +121,7 @@
     </div>
 
     <button v-if="showPlayer" class="back-button" @click="closePlayer">
-      <i class="bi bi-arrow-left"></i> Return to songs list
+      <i class="bi bi-arrow-left"></i> {{ strings.returnToList }}
     </button>
   </div>
 </template>
@@ -131,9 +131,66 @@ import { MediaPlugin } from '@/plugins/MediaPlugin'
 import { useMusicPlayerStore } from '@/stores/musicPlayerStore.js'
 import MusicPlayerPlaylist from './MusicPlayerPlaylist.vue'
 
+const STRINGS = {
+  it: {
+    title: 'Le tue Playlist',
+    loadingPlaylists: 'Caricamento playlist...',
+    noPlaylists: 'Nessuna playlist trovata.',
+    add: 'Aggiungi',
+    remove: 'Rimuovi',
+    searchPlaceholder: 'Cerca brani disponibili...',
+    loadingTracks: 'Caricamento brani...',
+    confirmAdd: 'Conferma Aggiunta',
+    loadingSongs: 'Caricamento canzoni...',
+    noSongsInPlaylist: 'Nessuna canzone in questa playlist.',
+    back: 'Indietro',
+    returnToMenu: 'Torna al menu',
+    returnToList: 'Torna alla lista brani',
+    unknownArtist: 'Sconosciuto',
+    loadError: 'Impossibile caricare le playlist.',
+    playlistEmpty: 'La playlist è vuota!',
+    deleteConfirm: 'Eliminare la playlist',
+    removeSongConfirm: 'Rimuovere',
+    fromPlaylist: 'dalla playlist?',
+    addedCount: 'brani aggiunti.',
+    addError: 'Errore durante l\'aggiunta:',
+    removeError: 'Errore durante la rimozione:'
+  },
+  en: {
+    title: 'Your Playlists',
+    loadingPlaylists: 'Loading playlists...',
+    noPlaylists: 'No playlists found.',
+    add: 'Add',
+    remove: 'Remove',
+    searchPlaceholder: 'Search available tracks...',
+    loadingTracks: 'Loading tracks...',
+    confirmAdd: 'Confirm Add',
+    loadingSongs: 'Loading songs...',
+    noSongsInPlaylist: 'No songs in this playlist.',
+    back: 'Back',
+    returnToMenu: 'Return to menu',
+    returnToList: 'Return to songs list',
+    unknownArtist: 'Unknown',
+    loadError: 'Failed to load playlists.',
+    playlistEmpty: 'Playlist is empty!',
+    deleteConfirm: 'Delete playlist',
+    removeSongConfirm: 'Remove',
+    fromPlaylist: 'from playlist?',
+    addedCount: 'songs added.',
+    addError: 'Error adding songs:',
+    removeError: 'Error removing song:'
+  }
+}
+
 export default {
   name: "Playlists",
   components: { MusicPlayerPlaylist },
+  props: {
+    currentLang: {
+      type: String,
+      default: 'it'
+    }
+  },
   data() {
     return {
       playerStore: useMusicPlayerStore(),
@@ -156,6 +213,9 @@ export default {
     }
   },
   computed: {
+    strings() {
+      return this.currentLang === 'en' ? STRINGS.en : STRINGS.it;
+    },
     filteredAvailableSongs() {
       if (!this.searchQuery) return this.availableSongs;
       const q = this.searchQuery.toLowerCase();
@@ -175,7 +235,7 @@ export default {
         const response = await MediaPlugin.listPlaylists();
         this.playlists = response.playlists || [];
       } catch (err) {
-        alert("Failed to load playlists.");
+        alert(this.strings.loadError);
       } finally {
         this.loading = false;
       }
@@ -251,15 +311,15 @@ export default {
 
             await this.loadPlaylistSongs(this.selectedPlaylist.path);
             this.setEditAction('remove'); 
-            alert(`${this.songsToAdd.length} songs added.`);
+            alert(`${this.songsToAdd.length} ${this.strings.addedCount}`);
         } catch (e) {
-            alert("Error adding songs: " + e.message);
+            alert(`${this.strings.addError} ${e.message}`);
         }
     },
 
     async handleSongClick(song, index) {
       if (this.isEditMode && this.editAction === 'remove') {
-          if(!confirm(`Remove "${song.title}" from playlist?`)) return;
+          if(!confirm(`${this.strings.removeSongConfirm} "${song.title}" ${this.strings.fromPlaylist}`)) return;
           
           try {
              await MediaPlugin.removeSongFromPlaylist({
@@ -274,7 +334,7 @@ export default {
              });
 
           } catch(e) {
-              alert("Error removing song: " + e.message);
+              alert(`${this.strings.removeError} ${e.message}`);
           }
       } else if (!this.isEditMode) {
           this.playSongAtIndex(index);
@@ -312,7 +372,7 @@ export default {
           this.isShuffleModeOn = true;
           this.showPlayer = true;
         } else {
-             alert("Playlist is empty!");
+             alert(this.strings.playlistEmpty);
         }
       } catch (err) {
          this.playlistSongs = [];
@@ -322,7 +382,7 @@ export default {
     },
 
     async removePlaylist(name) {
-      if (!confirm(`Delete playlist "${name}"?`)) return
+      if (!confirm(`${this.strings.deleteConfirm} "${name}"?`)) return
       try {
         await MediaPlugin.removePlaylist({ name })
         this.playlists = this.playlists.filter(p => p.name !== name)

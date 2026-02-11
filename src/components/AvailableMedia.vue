@@ -3,19 +3,20 @@
     
     <div v-if="currentSong" class="player-wrapper">
       <MusicPlayer 
-        :currentSong="currentSong" 
+        :currentSong="currentSong"
+        :currentLang="currentLang"
         @returnToList="stopPlayback"
       />
     </div>
     
     <div v-else class="list-wrapper">
       <div class="header-section">
-        <h2 class="page-title">Available Media <i class="bi bi-music-note-list"></i></h2>
+        <h2 class="page-title">{{ strings.availableMedia }} <i class="bi bi-music-note-list"></i></h2>
       </div>
 
       <div class="scroll-container">
         <SongLoader v-slot="{ songs }">
-          <div v-if="!songs || songs.length === 0" class="no-songs">No Music Found</div>
+          <div v-if="!songs || songs.length === 0" class="no-songs">{{ strings.noMusic }}</div>
           <ul v-else class="songs-list">
             <li
               v-for="song in songs"
@@ -28,7 +29,7 @@
               </div>
               <div class="song-info">
                 <div class="song-title">{{ song.title }}</div>
-                <div class="song-artist">{{ song.artist || 'Unknown Artist' }}</div>
+                <div class="song-artist">{{ song.artist || strings.unknownArtist }}</div>
               </div>
               <div class="play-indicator">
                 <i class="bi bi-play-circle"></i>
@@ -40,7 +41,7 @@
     </div>
 
     <button v-if="!currentSong" class="back-button" @click="handleGoBack">
-      <i class="bi bi-arrow-left"></i> Return to menu
+      <i class="bi bi-arrow-left"></i> {{ strings.returnToMenu }}
     </button>
   </div>
 </template>
@@ -51,11 +52,36 @@ import MusicPlayer from './MusicPlayer.vue'
 import { MediaPlugin } from '@/plugins/MediaPlugin'
 import { ForegroundService, ServiceType } from '@capawesome-team/capacitor-android-foreground-service'
 
+const STRINGS = {
+  it: {
+    availableMedia: 'Media Disponibili',
+    noMusic: 'Nessuna musica trovata',
+    unknownArtist: 'Artista Sconosciuto',
+    returnToMenu: 'Torna al menu',
+    currentlyPlaying: 'In riproduzione',
+    errorPlaying: 'Errore durante la riproduzione: '
+  },
+  en: {
+    availableMedia: 'Available Media',
+    noMusic: 'No Music Found',
+    unknownArtist: 'Unknown Artist',
+    returnToMenu: 'Return to menu',
+    currentlyPlaying: 'Currently playing',
+    errorPlaying: 'Error playing media: '
+  }
+}
+
 export default {
   name: "AvailableMedia",
   components: {
     SongLoader,
     MusicPlayer,
+  },
+  props: {
+    currentLang: {
+      type: String,
+      default: 'it'
+    }
   },
   data() {
     return {
@@ -63,13 +89,18 @@ export default {
       currentSong: null,
     }
   },
+  computed: {
+    strings() {
+      return this.currentLang === 'en' ? STRINGS.en : STRINGS.it;
+    }
+  },
   methods: {
     async playSong(song) {
       try {
         await ForegroundService.startForegroundService({
           id: 1,
-          title: song.title || 'Currently playing',
-          body: song.artist || 'Unknown Artist',
+          title: song.title || this.strings.currentlyPlaying,
+          body: song.artist || this.strings.unknownArtist,
           smallIcon: 'ic_launcher',
           serviceType: ServiceType.MediaPlayback
         })
@@ -79,12 +110,12 @@ export default {
         await MediaPlugin.play({ 
           path: song.path,
           title: song.title,
-          artist: song.artist || 'Unknown Artist'
+          artist: song.artist || this.strings.unknownArtist
         })
         this.currentPlayingPath = song.path
         this.currentSong = song
       } catch (e) {
-        alert("Error playing media: " + e.message)
+        alert(this.strings.errorPlaying + e.message)
       }
     },
 

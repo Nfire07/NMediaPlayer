@@ -3,14 +3,14 @@
     
     <div class="scrollable-content">
       <div class="header-section">
-        <h2 class="page-title">Create Playlist <i class="bi bi-pencil"></i></h2>
+        <h2 class="page-title">{{ strings.createPlaylist }} <i class="bi bi-pencil"></i></h2>
         
         <div class="input-wrapper">
           <input
             class="name-input"
             type="text"
             v-model="playlistName"
-            placeholder="Name your playlist..."
+            :placeholder="strings.namePlaceholder"
           />
           <div class="input-highlight"></div>
         </div>
@@ -21,18 +21,18 @@
             type="text" 
             class="search-input" 
             v-model="searchQuery" 
-            placeholder="Search tracks..." 
+            :placeholder="strings.searchPlaceholder" 
           />
         </div>
         
         <p class="instruction-text">
-          Select tracks to include:
+          {{ strings.selectTracks }}
         </p>
       </div>
 
       <div class="list-container">
         <SongLoader v-slot="{ songs }">
-          <div v-if="!songs || songs.length === 0" class="no-songs">No Music Found</div>
+          <div v-if="!songs || songs.length === 0" class="no-songs">{{ strings.noMusic }}</div>
           
           <ul v-else class="songs-list">
             <li
@@ -44,7 +44,7 @@
             >
               <div class="song-info">
                 <div class="song-title">{{ song.title }}</div>
-                <div class="song-artist">{{ song.artist || 'Unknown Artist' }}</div>
+                <div class="song-artist">{{ song.artist || strings.unknownArtist }}</div>
               </div>
               
               <div class="checkbox-custom" :class="{ checked: isSelected(song) }">
@@ -53,7 +53,7 @@
             </li>
             
             <div v-if="filterSongs(songs).length === 0" class="no-results">
-              No matches found.
+              {{ strings.noMatches }}
             </div>
           </ul>
         </SongLoader>
@@ -65,13 +65,13 @@
           @click="createPlaylist"
           :disabled="!playlistName || selectedSongs.length === 0"
         >
-          CONFIRM CREATION <i class="bi bi-plus-lg"></i>
+          {{ strings.confirmCreation }} <i class="bi bi-plus-lg"></i>
         </button>
       </div>
     </div>
 
     <button class="back-button" @click="$emit('goBack')">
-      <i class="bi bi-arrow-left"></i> Return to menu
+      <i class="bi bi-arrow-left"></i> {{ strings.returnToMenu }}
     </button>
 
   </div>
@@ -81,14 +81,58 @@
 import SongLoader from './SongLoader.vue'
 import { MediaPlugin } from '@/plugins/MediaPlugin'
 
+const STRINGS = {
+  it: {
+    createPlaylist: 'Crea Playlist',
+    namePlaceholder: 'Nome della playlist...',
+    searchPlaceholder: 'Cerca brani...',
+    selectTracks: 'Seleziona i brani da includere:',
+    noMusic: 'Nessuna musica trovata',
+    noMatches: 'Nessun risultato.',
+    confirmCreation: 'Conferma Creazione',
+    returnToMenu: 'Torna al menu',
+    unknownArtist: 'Artista Sconosciuto',
+    alertEnterName: 'Inserisci un nome per la playlist.',
+    alertExists: 'Esiste già una playlist con questo nome.',
+    alertSuccess: 'Playlist creata con successo!',
+    alertError: 'Errore: '
+  },
+  en: {
+    createPlaylist: 'Create Playlist',
+    namePlaceholder: 'Name your playlist...',
+    searchPlaceholder: 'Search tracks...',
+    selectTracks: 'Select tracks to include:',
+    noMusic: 'No Music Found',
+    noMatches: 'No matches found.',
+    confirmCreation: 'Confirm Creation',
+    returnToMenu: 'Return to menu',
+    unknownArtist: 'Unknown Artist',
+    alertEnterName: 'Please enter a playlist name.',
+    alertExists: 'A playlist with this name already exists.',
+    alertSuccess: 'Playlist created successfully!',
+    alertError: 'Error: '
+  }
+}
+
 export default {
   name: 'CreatePlaylist',
   components: { SongLoader },
+  props: {
+    currentLang: {
+      type: String,
+      default: 'it'
+    }
+  },
   data() {
     return {
       selectedSongs: [],
       playlistName: '',
       searchQuery: '',
+    }
+  },
+  computed: {
+    strings() {
+      return this.currentLang === 'en' ? STRINGS.en : STRINGS.it;
     }
   },
   methods: {
@@ -129,12 +173,12 @@ export default {
 
     async createPlaylist() {
       if (!this.playlistName.trim()) {
-        alert('Please enter a playlist name.')
+        alert(this.strings.alertEnterName)
         return
       }
       
       if (await this.playlistExists(this.playlistName)) {
-        alert('A playlist with this name already exists.')
+        alert(this.strings.alertExists)
         return
       }
 
@@ -148,13 +192,13 @@ export default {
           })),
         })
 
-        alert('Playlist created successfully!')
+        alert(this.strings.alertSuccess)
         this.playlistName = ''
         this.selectedSongs = []
         this.searchQuery = ''
         this.$emit('goBack') 
       } catch (err) {
-        alert('Error: ' + err.message)
+        alert(this.strings.alertError + err.message)
       }
     },
   },

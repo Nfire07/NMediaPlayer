@@ -1,15 +1,45 @@
 <template>
   <div class="layout">
     <div class="main">
-      <Navigator v-if="currentView === 'navigator'" @navigate="setView" />
-      <AvailableMedia v-if="currentView === 'media'" @goBack="setView('navigator')" />
-      <Playlists v-if="currentView === 'playlists'" @goBack="setView('navigator')" />
-      <CreatePlaylist v-if="currentView === 'create'" @goBack="setView('navigator')" /> 
+      <Navigator 
+        v-if="currentView === 'navigator'" 
+        :current-lang="language"
+        @navigate="setView" 
+      />
+      
+      <AvailableMedia 
+        v-if="currentView === 'media'" 
+        :current-lang="language"
+        @goBack="setView('navigator')" 
+      />
+      
+      <Playlists 
+        v-if="currentView === 'playlists'" 
+        :current-lang="language"
+        @goBack="setView('navigator')" 
+      />
+      
+      <CreatePlaylist 
+        v-if="currentView === 'create'" 
+        :current-lang="language"
+        @goBack="setView('navigator')" 
+      /> 
+      
+      <Settings 
+        v-if="currentView === 'settings'" 
+        :is-dark-mode="isDarkMode"
+        :current-lang="language"
+        @toggle-theme="handleThemeChange"
+        @toggle-lang="handleLangChange"
+        @goBack="setView('navigator')" 
+      /> 
+      
+      <Credits 
+        v-if="currentView === 'credits'" 
+        :current-lang="language"
+        @goBack="setView('navigator')" 
+      /> 
     </div>
-
-    <footer class="footer" v-if="currentView === 'navigator'">
-      <p>Developed by <img src="./assets/ICON_NO_ALPHA.png" alt="N" /></p>
-    </footer>
   </div>
 </template>
 
@@ -18,8 +48,11 @@ import Navigator from './components/Navigator.vue'
 import AvailableMedia from './components/AvailableMedia.vue'
 import Playlists from './components/Playlists.vue'
 import CreatePlaylist from './components/CreatePlaylist.vue'
+import Credits from './components/Credits.vue'
+import Settings from './components/Settings.vue'
 import { useMusicPlayerStore } from '@/stores/musicPlayerStore'
 import { onMounted } from 'vue'
+import { Preferences } from '@capacitor/preferences';
 
 export default {
   name: 'App',
@@ -27,7 +60,9 @@ export default {
     Navigator,
     AvailableMedia,
     Playlists,
-    CreatePlaylist
+    CreatePlaylist,
+    Settings,
+    Credits,
   },
   setup() {
     const musicStore = useMusicPlayerStore()
@@ -43,26 +78,60 @@ export default {
 
   data() {
     return {
-      currentView: 'navigator'
+      currentView: 'navigator',
+      isDarkMode: false,
+      language: 'it'
     }
   },
 
   mounted() {
-    this.applyTheme()
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', this.applyTheme)
-  },
-
-  beforeUnmount() {
-    window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', this.applyTheme)
+    this.initSettings();
   },
 
   methods: {
     setView(view) {
       this.currentView = view
     },
-    applyTheme() {
-      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      document.body.classList.toggle('dark', isDark)
+
+    async initSettings() {
+      const { value: savedTheme } = await Preferences.get({ key: 'theme' });
+      
+      if (savedTheme) {
+        this.isDarkMode = savedTheme === 'dark';
+      } else {
+        this.isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+      this.applyThemeClass();
+
+      const { value: savedLang } = await Preferences.get({ key: 'lang' });
+      this.language = savedLang || 'it';
+    },
+
+    async handleThemeChange(isDark) {
+      this.isDarkMode = isDark;
+      this.applyThemeClass();
+      
+      await Preferences.set({
+        key: 'theme',
+        value: isDark ? 'dark' : 'light',
+      });
+    },
+
+    applyThemeClass() {
+      document.body.classList.toggle('dark', this.isDarkMode);
+    },
+
+    async handleLangChange(newLang) {
+      if (typeof newLang === 'boolean') {
+          this.language = newLang ? 'en' : 'it';
+      } else {
+          this.language = newLang;
+      }
+      
+      await Preferences.set({
+        key: 'lang',
+        value: this.language,
+      });
     }
   }
 }
@@ -131,8 +200,4 @@ export default {
         color: #fff;
     }
 
-    .footer img {
-        height: 24px;
-        vertical-align: middle;
-    }
 </style>

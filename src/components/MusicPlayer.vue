@@ -1,6 +1,6 @@
 <template>
   <div class="music-player">
-    <div class="title">{{ currentSong?.title || "No song playing" }}</div>
+    <div class="title">{{ currentSong?.title || strings.noSong }}</div>
 
     <div class="progress-container">
       <input
@@ -34,13 +34,24 @@
     </div>
 
     <button class="return-button" @click="handleReturnToList">
-      <i class="bi bi-arrow-return-left"></i>
+      <i class="bi bi-arrow-return-left"></i> {{ strings.returnToList }}
     </button>
   </div>
 </template>
 
 <script>
 import { MediaPlugin } from '@/plugins/MediaPlugin'
+
+const STRINGS = {
+  it: {
+    noSong: 'Nessun brano in riproduzione',
+    returnToList: 'Torna alla lista'
+  },
+  en: {
+    noSong: 'No song playing',
+    returnToList: 'Return to list'
+  }
+}
 
 export default {
   name: "MusicPlayer",
@@ -49,6 +60,10 @@ export default {
       type: Object,
       default: null,
     },
+    currentLang: {
+      type: String,
+      default: 'it'
+    }
   },
   data() {
     return {
@@ -57,6 +72,11 @@ export default {
       currentTime: 0,
       intervalId: null,
       isSeeking: false,
+    }
+  },
+  computed: {
+    strings() {
+      return this.currentLang === 'en' ? STRINGS.en : STRINGS.it;
     }
   },
   watch: {

@@ -5,30 +5,71 @@
     </h1>
 
     <div class="buttons-wrapper">
-      <button class="card avalable-media" @click="$emit('navigate', 'media')">
+      <button class="card available-media" @click="$emit('navigate', 'media')">
         <span class="btn-content">
-            Show Available Media <br> <i class="bi bi-music-note-list"></i>
+            {{ strings.availableMedia }} <br> <i class="bi bi-music-note-list"></i>
         </span>
       </button>
 
       <button class="card playlists" @click="$emit('navigate', 'playlists')">
         <span class="btn-content">
-            Show Playlists <br> <i class="bi bi-view-list"></i>
+            {{ strings.playlists }} <br> <i class="bi bi-view-list"></i>
         </span>
       </button>
 
       <button class="card create-playlist" @click="$emit('navigate', 'create')">
         <span class="btn-content">
-            Create New Playlist <br> <i class="bi bi-pencil"></i>
+            {{ strings.createPlaylist }} <br> <i class="bi bi-pencil"></i>
         </span>
       </button>
+      
+      <button class="card settings" @click="$emit('navigate', 'settings')">
+        <span class="btn-content">
+            {{ strings.settings }} <br> <i class="bi bi-gear"></i>
+        </span>
+      </button>
+      
+      <button class="card credits" @click="$emit('navigate', 'credits')">
+        <span class="btn-content">
+            {{ strings.credits }} <br> <i class="bi bi-info-circle"></i>
+        </span>
+      </button>
+
     </div>
   </div>
 </template>
 
 <script>
+const STRINGS = {
+  it: {
+    availableMedia: 'Media Disponibili',
+    playlists: 'Le tue Playlist',
+    createPlaylist: 'Crea Nuova Playlist',
+    settings: 'Impostazioni',
+    credits: 'Crediti'
+  },
+  en: {
+    availableMedia: 'Show Available Media',
+    playlists: 'Show Playlists',
+    createPlaylist: 'Create New Playlist',
+    settings: 'Settings',
+    credits: 'Credits'
+  }
+}
+
 export default {
   name: "Navigator",
+  props: {
+    currentLang: {
+      type: String,
+      default: 'it'
+    }
+  },
+  computed: {
+    strings() {
+      return this.currentLang === 'en' ? STRINGS.en : STRINGS.it;
+    }
+  }
 }
 </script>
 
@@ -95,7 +136,7 @@ export default {
   z-index: 2;
 }
 
-.avalable-media {
+.available-media {
   --gradient: linear-gradient(130deg, #00cbcf 0%, #fdbb2d 100%);
   --shadow-color: rgba(0, 203, 207, 0.7);
 
@@ -113,6 +154,22 @@ export default {
 .create-playlist {
   --gradient: linear-gradient(130deg, #2f9ceb 0%, #944ccf 100%);
   --shadow-color: rgba(47, 156, 235, 0.7);
+
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), var(--gradient);
+  animation-delay: 200ms, 0s;
+}
+
+.settings{
+  --gradient: linear-gradient(130deg, #d45232 0%, #cf8b4c 100%);
+  --shadow-color: rgba(185, 156, 39, 0.7);
+
+  background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), var(--gradient);
+  animation-delay: 200ms, 0s;
+}
+
+.credits{
+  --gradient: linear-gradient(130deg, #a7a7a7 0%, #bdb162 100%);
+  --shadow-color: rgba(185, 156, 39, 0.7);
 
   background-image: linear-gradient(var(--card-bg-color), var(--card-bg-color)), var(--gradient);
   animation-delay: 200ms, 0s;
