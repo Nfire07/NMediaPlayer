@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <h1 id="title">
-      NMediaPlayer <i class="bi bi-music-player"></i>
+      NPlayer <i class="bi bi-music-player"></i>
     </h1>
 
     <div class="buttons-wrapper">

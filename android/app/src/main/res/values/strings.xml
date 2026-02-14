@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">NMediaPlayer</string>
-    <string name="title_activity_main">NMediaPlayer</string>
-    <string name="package_name">com.nmediaplayer.mediaplayer</string>
-    <string name="custom_url_scheme">com.nmediaplayer.mediaplayer</string>
+    <string name="app_name">NPlayer</string>
+    <string name="title_activity_main">NPlayer</string>
+    <string name="package_name">com.nmusicplayer.nplayer</string>
+    <string name="custom_url_scheme">com.nmusicplayer.nplayer</string>
 </resources>

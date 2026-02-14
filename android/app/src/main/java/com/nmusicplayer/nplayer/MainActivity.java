@@ -1,4 +1,4 @@
-package com.nmediaplayer.mediaplayer;
+package com.nmusicplayer.nplayer;
 
 import android.content.Intent;
 import android.os.Build;
@@ -7,7 +7,7 @@ import android.provider.Settings;
 import android.widget.Toast;
 import android.os.Environment;
 import com.getcapacitor.BridgeActivity;
-import com.nmediaplayer.mediaplayer.plugins.MediaPlugin;
+import com.nmusicplayer.nplayer.plugins.MediaPlugin;
 
 
 public class MainActivity extends BridgeActivity {

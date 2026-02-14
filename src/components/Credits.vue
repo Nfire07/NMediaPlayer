@@ -48,7 +48,7 @@ export default {
                 <div class="app-icon-container">
                     <img src="../assets/ic_launcher.png" alt="App Icon" class="app-icon" />
                 </div>
-                <h1 class="app-name">NMediaPlayer</h1>
+                <h1 class="app-name">NPlayer</h1>
                 
                 <div class="meta-info">
                     <div class="meta-row">

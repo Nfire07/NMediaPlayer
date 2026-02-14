@@ -1,4 +1,4 @@
-package com.nmediaplayer.mediaplayer;
+package com.nmusicplayer.nplayer;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -13,7 +13,7 @@ public class MediaNotificationReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         if (action == null) return;
 
-        Intent broadcastIntent = new Intent("com.nmediaplayer.MEDIA_ACTION");
+        Intent broadcastIntent = new Intent("com.nmusicplayer.MEDIA_ACTION");
         broadcastIntent.putExtra("action", action);
         context.sendBroadcast(broadcastIntent);
     }

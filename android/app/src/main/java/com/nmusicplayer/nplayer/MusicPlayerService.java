@@ -1,4 +1,4 @@
-package com.nmediaplayer.mediaplayer;
+package com.nmusicplayer.nplayer;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -26,16 +26,16 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
     private static final String CHANNEL_ID = "music_player_channel";
     private static final int NOTIFICATION_ID = 1001;
 
-    public static final String ACTION_PLAY = "com.nmediaplayer.ACTION_PLAY";
-    public static final String ACTION_PAUSE = "com.nmediaplayer.ACTION_PAUSE";
-    public static final String ACTION_RESUME = "com.nmediaplayer.ACTION_RESUME";
-    public static final String ACTION_NEXT = "com.nmediaplayer.ACTION_NEXT";
-    public static final String ACTION_PREV = "com.nmediaplayer.ACTION_PREV";
-    public static final String ACTION_STOP = "com.nmediaplayer.ACTION_STOP";
-    public static final String ACTION_SEEK = "com.nmediaplayer.ACTION_SEEK";
+    public static final String ACTION_PLAY = "com.nmusicplayer.ACTION_PLAY";
+    public static final String ACTION_PAUSE = "com.nmusicplayer.ACTION_PAUSE";
+    public static final String ACTION_RESUME = "com.nmusicplayer.ACTION_RESUME";
+    public static final String ACTION_NEXT = "com.nmusicplayer.ACTION_NEXT";
+    public static final String ACTION_PREV = "com.nmusicplayer.ACTION_PREV";
+    public static final String ACTION_STOP = "com.nmusicplayer.ACTION_STOP";
+    public static final String ACTION_SEEK = "com.nmusicplayer.ACTION_SEEK";
     
-    public static final String ACTION_PLAY_INDEX = "com.nmediaplayer.ACTION_PLAY_INDEX";
-    public static final String ACTION_AUTO_NEXT_STARTED = "com.nmediaplayer.ACTION_AUTO_NEXT_STARTED";
+    public static final String ACTION_PLAY_INDEX = "com.nmusicplayer.ACTION_PLAY_INDEX";
+    public static final String ACTION_AUTO_NEXT_STARTED = "com.nmusicplayer.ACTION_AUTO_NEXT_STARTED";
 
     public static final String EXTRA_TITLE = "title";
     public static final String EXTRA_ARTIST = "artist";
@@ -225,7 +225,7 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
         currentTitle = song.title;
         currentArtist = song.artist;
 
-        Intent intent = new Intent("com.nmediaplayer.TRACK_CHANGE");
+        Intent intent = new Intent("com.nmusicplayer.TRACK_CHANGE");
         intent.putExtra("index", currentIndex);
         intent.putExtra("title", song.title);
         intent.putExtra("artist", song.artist);
@@ -309,7 +309,7 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
     }
 
     private void notifyPlugin(String action) {
-        Intent intent = new Intent("com.nmediaplayer.MEDIA_ACTION");
+        Intent intent = new Intent("com.nmusicplayer.MEDIA_ACTION");
         intent.putExtra("action", action);
         if (!playlist.isEmpty() && currentIndex >= 0 && currentIndex < playlist.size()) {
             SongItem current = playlist.get(currentIndex);

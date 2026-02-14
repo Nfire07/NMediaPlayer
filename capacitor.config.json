@@ -1,5 +1,5 @@
 {
-  "appId": "com.nmediaplayer.mediaplayer",
-  "appName": "NMediaPlayer",
+  "appId": "com.nmusicplayer.nplayer",
+  "appName": "NPlayer",
   "webDir": "dist"
 }
