@@ -1,22 +1,22 @@
 package com.nmusicplayer.nplayer.plugins;
 
-import android.Manifest;
-import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Environment;
+import android.provider.Settings;
+import android.os.Build;
 import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.database.Cursor;
-import android.media.MediaPlayer;
-import android.media.MediaScannerConnection;
-import android.net.Uri;
-import android.os.Build;
 import android.provider.MediaStore;
 import android.util.Log;
-import java.util.HashSet;
-import java.util.Set;
+import android.media.MediaScannerConnection;
+import android.Manifest;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.media.MediaPlayer;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -27,15 +27,23 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.nmusicplayer.nplayer.MusicPlayerService;
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 @CapacitorPlugin(
     name = "MediaPlugin",
@@ -234,6 +242,17 @@ public class MediaPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    private File getPlaylistFile(String name) {
+        String filename = name.replaceAll("\\s+", "_") + ".json";
+        File internal = new File(getContext().getFilesDir(), filename);
+        if (internal.exists()) return internal;
+        
+        File external = new File(getContext().getExternalFilesDir(null), filename);
+        if (external.exists()) return external;
+        
+        return internal;
+    }
+
     @PluginMethod
     public void createPlaylist(PluginCall call) {
         String name = call.getString("name");
@@ -281,11 +300,11 @@ public class MediaPlugin extends Plugin {
 
     @PluginMethod
     public void listPlaylists(PluginCall call) {
-        File dir = getContext().getFilesDir();
-        File[] files = dir.listFiles();
         JSArray playlists = new JSArray();
-        if (files != null) {
-            for (File file : files) {
+        
+        File[] internalFiles = getContext().getFilesDir().listFiles();
+        if (internalFiles != null) {
+            for (File file : internalFiles) {
                 if (file.getName().endsWith(".json")) {
                     JSObject playlist = new JSObject();
                     playlist.put("name", file.getName().replace(".json", "").replace("_", " "));
@@ -294,6 +313,31 @@ public class MediaPlugin extends Plugin {
                 }
             }
         }
+
+        File[] externalFiles = getContext().getExternalFilesDir(null).listFiles();
+        if (externalFiles != null) {
+            for (File file : externalFiles) {
+                if (file.getName().endsWith(".json")) {
+                    boolean alreadyAdded = false;
+                    String cleanName = file.getName().replace(".json", "").replace("_", " ");
+                    for (int i = 0; i < playlists.length(); i++) {
+                        try {
+                            if (playlists.getJSONObject(i).getString("name").equals(cleanName)) {
+                                alreadyAdded = true;
+                                break;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    if (!alreadyAdded) {
+                        JSObject playlist = new JSObject();
+                        playlist.put("name", cleanName);
+                        playlist.put("path", file.getAbsolutePath());
+                        playlists.put(playlist);
+                    }
+                }
+            }
+        }
+
         JSObject ret = new JSObject();
         ret.put("playlists", playlists);
         call.resolve(ret);
@@ -398,9 +442,15 @@ public class MediaPlugin extends Plugin {
     public void updatePlaylistOrder(PluginCall call) {
         String path = call.getString("path");
         JSArray newSongs = call.getArray("songs");
-        if (path == null || path.isEmpty() || newSongs == null || newSongs.length() == 0) { call.reject("Invalid path or songs"); return; }
+        if (path == null || path.isEmpty() || newSongs == null || newSongs.length() == 0) { 
+            call.reject("Invalid path or songs"); 
+            return; 
+        }
         File file = new File(path);
-        if (!file.exists()) { call.reject("Playlist file not found"); return; }
+        if (!file.exists()) { 
+            call.reject("Playlist file not found"); 
+            return; 
+        }
         try {
             StringBuilder content = new StringBuilder();
             BufferedReader br = new BufferedReader(new FileReader(file));
@@ -417,28 +467,36 @@ public class MediaPlugin extends Plugin {
             playlist.put("songs", updatedSongs);
             try (FileWriter writer = new FileWriter(file)) { writer.write(playlist.toString(2)); }
             call.resolve();
-        } catch (Exception e) { call.reject("Failed to update playlist order: " + e.getMessage()); }
+        } catch (Exception e) { 
+            call.reject("Failed to update playlist order: " + e.getMessage()); 
+        }
     }
 
     @PluginMethod
     public void removePlaylist(PluginCall call) {
         String name = call.getString("name");
-        if (name == null || name.isEmpty()) { call.reject("Invalid playlist name"); return; }
+        if (name == null || name.isEmpty()) { 
+            call.reject("Invalid playlist name"); 
+            return; 
+        }
         try {
-            File dir = getContext().getFilesDir();
-            String filename = name.replaceAll("\\s+", "_") + ".json";
-            File file = new File(dir, filename);
+            File file = getPlaylistFile(name);
             if (file.exists()) {
                 if (file.delete()) call.resolve();
                 else call.reject("Failed to delete playlist file");
             } else call.reject("Playlist not found");
-        } catch (Exception e) { call.reject("Error removing playlist: " + e.getMessage()); }
+        } catch (Exception e) { 
+            call.reject("Error removing playlist: " + e.getMessage()); 
+        }
     }
 
     @PluginMethod
     public void getSongInfo(PluginCall call) {
         String path = call.getString("path");
-        if (path == null || path.isEmpty()) { call.reject("Invalid path"); return; }
+        if (path == null || path.isEmpty()) { 
+            call.reject("Invalid path"); 
+            return; 
+        }
         try {
             MediaPlayer mp = new MediaPlayer();
             mp.setDataSource(path);
@@ -448,7 +506,9 @@ public class MediaPlugin extends Plugin {
             JSObject result = new JSObject();
             result.put("duration", durationMs / 1000.0);
             call.resolve(result);
-        } catch (Exception e) { call.reject("Failed to get song info: " + e.getMessage()); }
+        } catch (Exception e) { 
+            call.reject("Failed to get song info: " + e.getMessage()); 
+        }
     }
 
     @PluginMethod
@@ -482,15 +542,14 @@ public class MediaPlugin extends Plugin {
             MusicPlayerService service = MusicPlayerService.getInstance();
             if (service != null) {
                 service.setPlaylist(playlist);
-                call.resolve();
-            } else {
-                call.resolve(); 
             }
+            call.resolve();
 
         } catch (Exception e) {
             call.reject("Error parsing playlist", e);
         }
     }
+
     @PluginMethod
     public void removeSongFromPlaylist(PluginCall call) {
         String playlistName = call.getString("playlistName");
@@ -502,9 +561,7 @@ public class MediaPlugin extends Plugin {
         }
 
         try {
-            File dir = getContext().getFilesDir();
-            String filename = playlistName.replaceAll("\\s+", "_") + ".json";
-            File file = new File(dir, filename);
+            File file = getPlaylistFile(playlistName);
 
             if (!file.exists()) {
                 call.reject("Playlist not found");
@@ -564,9 +621,7 @@ public class MediaPlugin extends Plugin {
 
         Set<String> playlistPaths = new HashSet<>();
         try {
-            File dir = getContext().getFilesDir();
-            String filename = playlistName.replaceAll("\\s+", "_") + ".json";
-            File file = new File(dir, filename);
+            File file = getPlaylistFile(playlistName);
 
             if (file.exists()) {
                 StringBuilder content = new StringBuilder();
@@ -630,9 +685,7 @@ public class MediaPlugin extends Plugin {
         }
 
         try {
-            File dir = getContext().getFilesDir();
-            String filename = playlistName.replaceAll("\\s+", "_") + ".json";
-            File file = new File(dir, filename);
+            File file = getPlaylistFile(playlistName);
 
             if (!file.exists()) {
                 call.reject("Playlist not found");
@@ -717,39 +770,57 @@ public class MediaPlugin extends Plugin {
             return;
         }
 
+        Context context = getContext();
+        ContentResolver resolver = context.getContentResolver();
+
         String extension = "";
         int i = path.lastIndexOf('.');
         if (i > 0) {
             extension = path.substring(i);
         }
-
+        
+        if (newName.toLowerCase().endsWith(extension.toLowerCase())) {
+            newName = newName.substring(0, newName.length() - extension.length());
+        }
+        
         String finalFileName = newName + extension;
-        Context context = getContext();
-        ContentResolver resolver = context.getContentResolver();
+        // TRANSLATED: Tentativo rinomina -> Attempting rename
+        Log.d("MediaPlugin", "Attempting rename: " + path + " -> " + finalFileName);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
-                Uri contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+                Uri collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL);
                 String selection = MediaStore.Audio.Media.DATA + "=?";
                 String[] selectionArgs = new String[]{ path };
 
                 Long id = null;
-                try (Cursor cursor = resolver.query(contentUri, new String[]{MediaStore.Audio.Media._ID}, selection, selectionArgs, null)) {
+                
+                try (Cursor cursor = resolver.query(collection, 
+                        new String[]{MediaStore.Audio.Media._ID}, 
+                        selection, selectionArgs, null)) {
+                    
                     if (cursor != null && cursor.moveToFirst()) {
                         id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID));
                     }
                 }
 
                 if (id == null) {
-                    call.reject("Song not found in MediaStore");
+                    call.reject("File not found in MediaStore. Try refreshing the list.");
                     return;
                 }
 
-                Uri itemUri = ContentUris.withAppendedId(contentUri, id);
+                Uri itemUri = ContentUris.withAppendedId(collection, id);
+                
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.Audio.Media.DISPLAY_NAME, finalFileName);
-
+                values.put(MediaStore.Audio.Media.TITLE, newName); 
+                values.put(MediaStore.Audio.Media.IS_PENDING, 1);
+                
                 int rowsUpdated = resolver.update(itemUri, values, null, null);
+                
+                values.clear();
+                values.put(MediaStore.Audio.Media.IS_PENDING, 0);
+                resolver.update(itemUri, values, null, null);
 
                 if (rowsUpdated > 0) {
                     String newPath = null;
@@ -758,22 +829,33 @@ public class MediaPlugin extends Plugin {
                             newPath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA));
                         }
                     }
+                    
+                    if (newPath == null) {
+                         File oldFile = new File(path);
+                         newPath = new File(oldFile.getParent(), finalFileName).getAbsolutePath();
+                    }
+
+                    updateSongInPlaylists(path, newPath, newName);
 
                     JSObject result = new JSObject();
                     result.put("success", true);
-                    result.put("newPath", newPath != null ? newPath : path);
+                    result.put("newPath", newPath);
                     call.resolve(result);
                 } else {
-                    call.reject("Failed to rename file via MediaStore");
+                    call.reject("Update failed. The file might be read-only.");
                 }
 
+            } catch (android.app.RecoverableSecurityException e) {
+                call.reject("Permission denied. Android requires explicit permission to rename files not created by this app.");
             } catch (Exception e) {
-                call.reject("Error renaming song: " + e.getMessage());
+                e.printStackTrace();
+                call.reject("Error renaming: " + e.getMessage());
             }
-        } else {
+        } 
+        else {
             File oldFile = new File(path);
             if (!oldFile.exists()) {
-                call.reject("File not found");
+                call.reject("File path does not exist on disk");
                 return;
             }
 
@@ -793,16 +875,170 @@ public class MediaPlugin extends Plugin {
 
                     MediaScannerConnection.scanFile(context,
                             new String[]{ newFile.getAbsolutePath() },
-                            null,
-                            null);
-                } catch (Exception e) {}
+                            null, null);
+                            
+                } catch (Exception e) {
+                    Log.w("MediaPlugin", "Error updating legacy MediaStore", e);
+                }
+
+                String newPath = newFile.getAbsolutePath();
+
+                updateSongInPlaylists(path, newPath, newName);
 
                 JSObject result = new JSObject();
                 result.put("success", true);
-                result.put("newPath", newFile.getAbsolutePath());
+                result.put("newPath", newPath);
                 call.resolve(result);
             } else {
-                call.reject("Failed to rename file");
+                call.reject("Failed to rename file (OS level)");
+            }
+        }
+    }
+
+    @PluginMethod
+    public void requestFullStorageAccess(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (Environment.isExternalStorageManager()) {
+                JSObject ret = new JSObject();
+                ret.put("granted", true);
+                call.resolve(ret);
+            } else {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.addCategory("android.intent.category.DEFAULT");
+                    intent.setData(Uri.parse(String.format("package:%s", getContext().getPackageName())));
+                    getActivity().startActivityForResult(intent, 2296); 
+                    
+                    JSObject ret = new JSObject();
+                    ret.put("granted", false);
+                    ret.put("status", "opening_settings");
+                    call.resolve(ret);
+                } catch (Exception e) {
+                    Intent intent = new Intent();
+                    intent.setAction(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                    getActivity().startActivityForResult(intent, 2296);
+                    
+                    JSObject ret = new JSObject();
+                    ret.put("granted", false);
+                    ret.put("status", "opening_settings_generic");
+                    call.resolve(ret);
+                }
+            }
+        } else {
+            JSObject ret = new JSObject();
+            ret.put("granted", true);
+            ret.put("status", "legacy_android");
+            call.resolve(ret);
+        }
+    }
+
+    @PluginMethod
+    public void checkStorageAccess(PluginCall call) {
+        boolean hasAccess = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            hasAccess = Environment.isExternalStorageManager();
+        }
+        JSObject ret = new JSObject();
+        ret.put("hasAccess", hasAccess);
+        call.resolve(ret);
+    }
+
+    private boolean renameViaMediaStore(String oldPath, String newDisplayName) {
+        try {
+            ContentResolver resolver = getContext().getContentResolver();
+            Uri audioCollection;
+            
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                audioCollection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL);
+            } else {
+                audioCollection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+            }
+
+            String[] projection = new String[] { MediaStore.Audio.Media._ID };
+            String selection = MediaStore.Audio.Media.DATA + "=?";
+            String[] selectionArgs = new String[] { oldPath };
+
+            Uri fileUri = null;
+            try (Cursor cursor = resolver.query(audioCollection, projection, selection, selectionArgs, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID));
+                    fileUri = ContentUris.withAppendedId(audioCollection, id);
+                }
+            }
+
+            if (fileUri == null) {
+                Log.e("Plugin", "MediaStore URI not found for path: " + oldPath);
+                return false;
+            }
+
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Audio.Media.DISPLAY_NAME, newDisplayName);
+            
+            int rowsUpdated = resolver.update(fileUri, values, null, null);
+            
+            return rowsUpdated > 0;
+
+        } catch (SecurityException securityException) {
+            Log.e("Plugin", "Security Exception: App needs explicit permission", securityException);
+            
+            return false;
+        } catch (Exception e) {
+            Log.e("Plugin", "Error renaming via MediaStore", e);
+            return false;
+        }
+    }
+
+    private void updateSongInPlaylists(String oldPath, String newPath, String newTitle) {
+        List<File> directories = new ArrayList<>();
+        directories.add(getContext().getFilesDir());
+        
+        File externalDir = getContext().getExternalFilesDir(null);
+        if (externalDir != null) {
+            directories.add(externalDir);
+        }
+
+        for (File dir : directories) {
+            File[] files = dir.listFiles();
+            if (files == null) continue;
+
+            for (File file : files) {
+                if (file.getName().endsWith(".json")) {
+                    try {
+                        StringBuilder content = new StringBuilder();
+                        BufferedReader br = new BufferedReader(new FileReader(file));
+                        String line;
+                        while ((line = br.readLine()) != null) content.append(line);
+                        br.close();
+
+                        String jsonString = content.toString();
+                        if (jsonString.isEmpty()) continue;
+
+                        JSONObject playlist = new JSONObject(jsonString);
+                        if (!playlist.has("songs")) continue;
+
+                        JSONArray songs = playlist.getJSONArray("songs");
+                        boolean changed = false;
+
+                        for (int j = 0; j < songs.length(); j++) {
+                            JSONObject song = songs.getJSONObject(j);
+                            if (song.optString("path").equals(oldPath)) {
+                                song.put("path", newPath);
+                                song.put("title", newTitle);
+                                changed = true;
+                            }
+                        }
+
+                        if (changed) {
+                            playlist.put("songs", songs);
+                            FileWriter writer = new FileWriter(file);
+                            writer.write(playlist.toString(2));
+                            writer.close();
+                            Log.d(TAG, "Updated song in playlist: " + file.getName());
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error updating playlist " + file.getName(), e);
+                    }
+                }
             }
         }
     }

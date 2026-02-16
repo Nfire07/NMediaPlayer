@@ -184,22 +184,26 @@ export default {
       const newName = prompt(this.strings.renamePrompt, song.title);
       
       if (!newName || newName.trim() === "") return;
-      if (newName === song.title) return;
 
       if (this.currentPlayingPath === song.path) {
         await this.stopPlayback();
       }
 
       try {
-        await MediaPlugin.renameSong({ 
+        const result = await MediaPlugin.renameSong({ 
           path: song.path, 
           newName: newName.trim() 
         });
         
-        this.refreshTrigger++;
+        if (this.$refs.loader && this.$refs.loader.fetchSongs) {
+            this.$refs.loader.fetchSongs(); 
+        } else {
+            this.refreshTrigger++;
+        }
+        
       } catch (e) {
         console.error(e);
-        alert(this.strings.renameError + ": " + e.message);
+        alert(this.strings.renameError + ": " + (e.message || e));
       }
     },
 

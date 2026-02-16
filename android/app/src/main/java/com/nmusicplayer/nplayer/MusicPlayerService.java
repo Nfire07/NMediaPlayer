@@ -5,8 +5,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.IBinder;
@@ -21,7 +23,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MusicPlayerService extends Service implements MediaPlayer.OnCompletionListener, MediaPlayer.OnErrorListener, MediaPlayer.OnPreparedListener {
+public class MusicPlayerService extends Service implements MediaPlayer.OnCompletionListener, MediaPlayer.OnErrorListener, MediaPlayer.OnPreparedListener, AudioManager.OnAudioFocusChangeListener {
     private static final String TAG = "MusicPlayerService";
     private static final String CHANNEL_ID = "music_player_channel";
     private static final int NOTIFICATION_ID = 1001;
@@ -57,6 +59,7 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
 
     private MediaPlayer mediaPlayer;
     private MediaSessionCompat mediaSession;
+    private AudioManager audioManager;
     private ArrayList<SongItem> playlist = new ArrayList<>();
     private int currentIndex = -1;
     private String currentTitle = "";
@@ -66,6 +69,7 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
     
     private boolean isPrepared = false;
     private boolean isAutoNextPending = false;
+    private boolean pausedByFocusLoss = false;
 
     public static MusicPlayerService getInstance() { return instance; }
 
@@ -77,6 +81,8 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MusicPlayer::WakeLock");
         wakeLock.setReferenceCounted(false);
+
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
         initMediaSession();
         createNotificationChannel();
@@ -112,17 +118,41 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
     @Override
     public void onPrepared(MediaPlayer mp) {
         isPrepared = true;
-        acquireWakeLock();
-        mp.start();
         
-        startForeground(NOTIFICATION_ID, createNotification(true));
-        updateUI(true);
+        int result = audioManager.requestAudioFocus(this, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+        
+        if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            acquireWakeLock();
+            mp.start();
+            
+            startForeground(NOTIFICATION_ID, createNotification(true));
+            updateUI(true);
 
-        if (isAutoNextPending) {
-            notifyPlugin(ACTION_AUTO_NEXT_STARTED);
-            isAutoNextPending = false;
-        } else {
-            notifyPlugin(ACTION_PLAY);
+            if (isAutoNextPending) {
+                notifyPlugin(ACTION_AUTO_NEXT_STARTED);
+                isAutoNextPending = false;
+            } else {
+                notifyPlugin(ACTION_PLAY);
+            }
+        }
+    }
+
+    @Override
+    public void onAudioFocusChange(int focusChange) {
+        switch (focusChange) {
+            case AudioManager.AUDIOFOCUS_LOSS:
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                if (isPlaying()) {
+                    handleAction(ACTION_PAUSE, null);
+                    pausedByFocusLoss = true;
+                }
+                break;
+            case AudioManager.AUDIOFOCUS_GAIN:
+                if (pausedByFocusLoss && isPrepared && !isPlaying()) {
+                    handleAction(ACTION_RESUME, null);
+                    pausedByFocusLoss = false;
+                }
+                break;
         }
     }
 
@@ -145,10 +175,13 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
                 break;
             case ACTION_RESUME:
                 if (mediaPlayer != null && !mediaPlayer.isPlaying() && isPrepared) {
-                    acquireWakeLock();
-                    mediaPlayer.start();
-                    updateUI(true);
-                    notifyPlugin(ACTION_RESUME);
+                    int result = audioManager.requestAudioFocus(this, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+                    if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                        acquireWakeLock();
+                        mediaPlayer.start();
+                        updateUI(true);
+                        notifyPlugin(ACTION_RESUME);
+                    }
                 }
                 break;
             case ACTION_PAUSE:
@@ -246,6 +279,7 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
     private void playAudio(String path, boolean isAuto) {
         isPrepared = false;
         isAutoNextPending = isAuto;
+        pausedByFocusLoss = false;
 
         try {
             if (mediaPlayer != null) {
@@ -282,6 +316,9 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
     }
 
     private void stopPlayer() {
+        if (audioManager != null) {
+            audioManager.abandonAudioFocus(this);
+        }
         if (mediaPlayer != null) {
             try {
                 mediaPlayer.stop();
@@ -439,6 +476,9 @@ public class MusicPlayerService extends Service implements MediaPlayer.OnComplet
     
     @Override
     public void onDestroy() {
+        if (audioManager != null) {
+            audioManager.abandonAudioFocus(this);
+        }
         instance = null;
         releaseWakeLock();
         if (mediaPlayer != null) {

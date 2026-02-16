@@ -49,6 +49,23 @@
           </div>
         </div>
 
+        <div class="search-bar-container" v-if="!loading && (!isEditMode || editAction !== 'add')">
+          <div class="search-input-wrapper">
+            <i class="bi bi-search search-icon"></i>
+            <input 
+              type="text" 
+              v-model="playlistSearchQuery" 
+              :placeholder="strings.searchPlaylistPlaceholder" 
+              class="search-input playlist-search"
+            />
+            <i 
+              v-if="playlistSearchQuery" 
+              class="bi bi-x-circle-fill clear-icon" 
+              @click="playlistSearchQuery = ''"
+            ></i>
+          </div>
+        </div>
+
         <div v-if="isEditMode && editAction === 'add'" class="add-songs-container">
             <input type="text" v-model="searchQuery" :placeholder="strings.searchPlaceholder" class="search-input"/>
             <div v-if="loadingAvailable" class="loading-text">{{ strings.loadingTracks }}</div>
@@ -78,27 +95,32 @@
 
         <div v-else class="songs-container">
           <div v-if="songsLoading" class="loading-text">{{ strings.loadingSongs }}</div>
+          
           <div v-else-if="playlistSongs.length === 0" class="no-songs">{{ strings.noSongsInPlaylist }}</div>
+          <div v-else-if="filteredPlaylistSongs.length === 0" class="no-songs">{{ strings.noResults || 'Nessun risultato' }}</div>
 
           <ul v-else class="songs-list">
             <li
-              v-for="(song, index) in playlistSongs"
-              :key="song.queueId || index"
+              v-for="(song, index) in filteredPlaylistSongs"
+              :key="song.queueId || song.path"
               class="song-item"
               :class="{ 'remove-mode': isEditMode && editAction === 'remove' }"
-              @click="handleSongClick(song, index)"
+              @click="handleSongClick(song)" 
               draggable="true"
-              @dragstart="!isEditMode && dragStart($event, song.queueId)"
+              @dragstart="!isEditMode && !playlistSearchQuery && dragStart($event, song.queueId)"
               @dragover.prevent
-              @drop="!isEditMode && drop($event, song.queueId)"
+              @drop="!isEditMode && !playlistSearchQuery && drop($event, song.queueId)"
             >
-              <div class="queue-id" v-if="!isEditMode || editAction !== 'remove'">{{ index + 1 }}</div>
+              <div class="queue-id" v-if="!isEditMode || editAction !== 'remove'">
+                  {{ playlistSearchQuery ? '•' : playlistSongs.indexOf(song) + 1 }}
+              </div>
+              
               <div class="remove-icon" v-if="isEditMode && editAction === 'remove'">
                   <i class="bi bi-dash-circle-fill"></i>
               </div>
 
               <div class="song-info">
-                <div class="song-title">{{ song.title }}</div>
+                <div class="song-title" v-html="highlightText(song.title)"></div>
                 <div class="song-artist">{{ song.artist || strings.unknownArtist }}</div>
               </div>
             </li>
@@ -154,7 +176,8 @@ const STRINGS = {
     fromPlaylist: 'dalla playlist?',
     addedCount: 'brani aggiunti.',
     addError: 'Errore durante l\'aggiunta:',
-    removeError: 'Errore durante la rimozione:'
+    removeError: 'Errore durante la rimozione:',
+    searchPlaylistPlaceholder: 'Cerca nella playlist...',
   },
   en: {
     title: 'Your Playlists',
@@ -178,7 +201,8 @@ const STRINGS = {
     fromPlaylist: 'from playlist?',
     addedCount: 'songs added.',
     addError: 'Error adding songs:',
-    removeError: 'Error removing song:'
+    removeError: 'Error removing song:',
+    searchPlaylistPlaceholder: 'Search in playlist...',
   }
 }
 
@@ -209,7 +233,8 @@ export default {
       availableSongs: [],
       loadingAvailable: false,
       searchQuery: '',
-      songsToAdd: []
+      songsToAdd: [],
+      playlistSearchQuery: ''
     }
   },
   computed: {
@@ -223,6 +248,17 @@ export default {
         (s.title && s.title.toLowerCase().includes(q)) || 
         (s.artist && s.artist.toLowerCase().includes(q))
       );
+    },
+    filteredPlaylistSongs() {
+      if (!this.playlistSongs) return [];
+      if (!this.playlistSearchQuery) return this.playlistSongs;
+
+      const query = this.playlistSearchQuery.toLowerCase();
+      return this.playlistSongs.filter(song => {
+        const titleMatch = (song.title || '').toLowerCase().includes(query);
+        const artistMatch = (song.artist || '').toLowerCase().includes(query);
+        return titleMatch || artistMatch;
+      });
     }
   },
   async mounted() {
@@ -240,11 +276,18 @@ export default {
         this.loading = false;
       }
     },
+    
+    highlightText(text) {
+      if (!this.playlistSearchQuery || !text) return text;
+      const regex = new RegExp(`(${this.playlistSearchQuery})`, 'gi');
+      return text.replace(regex, '<span style="color: #00cbcf; font-weight:bold;">$1</span>');
+    },
 
     async openPlaylist(playlist) {
       this.selectedPlaylist = playlist
       this.isEditMode = false
       this.editAction = null
+      this.playlistSearchQuery = ''
       await this.loadPlaylistSongs(playlist.path)
     },
 
@@ -317,7 +360,7 @@ export default {
         }
     },
 
-    async handleSongClick(song, index) {
+    async handleSongClick(song) {
       if (this.isEditMode && this.editAction === 'remove') {
           if(!confirm(`${this.strings.removeSongConfirm} "${song.title}" ${this.strings.fromPlaylist}`)) return;
           
@@ -327,7 +370,10 @@ export default {
                  songPath: song.path
              });
              
-             this.playlistSongs.splice(index, 1);
+             const realIndex = this.playlistSongs.findIndex(s => s.path === song.path);
+             if (realIndex !== -1) {
+                this.playlistSongs.splice(realIndex, 1);
+             }
              
              this.playlistSongs.forEach((s, i) => {
                  s.queueId = i + 1;
@@ -337,16 +383,21 @@ export default {
               alert(`${this.strings.removeError} ${e.message}`);
           }
       } else if (!this.isEditMode) {
-          this.playSongAtIndex(index);
+          this.playSongByObject(song);
       }
     },
 
-    async playSongAtIndex(index) {
+    async playSongByObject(song) {
       if (!this.playlistSongs || this.playlistSongs.length === 0) return;
-      await this.playerStore.setPlaylist(this.playlistSongs, index, false);
-      const songToPlay = this.playlistSongs[index];
-      await this.playerStore.playSong(songToPlay, index);
-      this.currentPlayingIndex = index;
+      
+      const realIndex = this.playlistSongs.findIndex(s => s.path === song.path);
+      
+      if (realIndex === -1) return;
+
+      await this.playerStore.setPlaylist(this.playlistSongs, realIndex, false);
+      await this.playerStore.playSong(song, realIndex);
+      
+      this.currentPlayingIndex = realIndex;
       this.isShuffleModeOn = false;
       this.showPlayer = true;
     },
@@ -433,6 +484,7 @@ export default {
   }
 }
 </script>
+
 <style scoped>
 .content {
   width: 100%;
@@ -618,6 +670,33 @@ export default {
     padding: 0 1rem;
 }
 
+.search-bar-container {
+    padding: 0 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 10px;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.9rem;
+    pointer-events: none;
+}
+
+.clear-icon {
+    position: absolute;
+    right: 10px;
+    color: #ff4e51;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
 .search-input {
     width: 100%;
     padding: 10px;
@@ -627,6 +706,12 @@ export default {
     border-radius: 8px;
     color: var(--card-text-color);
     font-size: 1rem;
+}
+
+.search-input.playlist-search {
+    padding-left: 35px;
+    padding-right: 35px;
+    margin: 5px 0;
 }
 
 .select-list {
