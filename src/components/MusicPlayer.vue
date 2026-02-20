@@ -1,6 +1,6 @@
 <template>
   <div class="music-player">
-    <div class="title">{{ currentSong?.title || "No song playing" }}</div>
+    <div class="title">{{ currentSong?.title || strings.noSong }}</div>
 
     <div class="progress-container">
       <input
@@ -8,7 +8,8 @@
         min="0"
         :max="duration"
         v-model="currentTime"
-        @input="seek"
+        @input="onSeekInput"
+        @change="onSeekChange"
         class="progress-bar"
       />
       <div class="time-info">
@@ -19,32 +20,38 @@
 
     <div class="controls-row">
       <button class="arrow-button" disabled>
-        <img :src="leftArrowIcon" class="arrow-icon" />
+        <i class="bi bi-skip-start-fill"></i>
       </button>
 
       <button class="pause-button" @click="togglePlayPause">
-        <img :src="currentIcon" class="pause-button-icon" />
+        <i class="bi bi-caret-right-fill" v-if="!isPlaying"></i>
+        <i class="bi bi-pause" v-else></i>
       </button>
 
       <button class="arrow-button" disabled>
-        <img :src="rightArrowIcon" class="arrow-icon" />
+        <i class="bi bi-skip-end-fill"></i>
       </button>
     </div>
 
     <button class="return-button" @click="handleReturnToList">
-      <img :src="ReturnIcon" class="return-icon" />
+      <i class="bi bi-arrow-return-left"></i> {{ strings.returnToList }}
     </button>
   </div>
 </template>
 
 <script>
 import { MediaPlugin } from '@/plugins/MediaPlugin'
-import pauseIcon from '@/assets/PAUSE.png'
-import playIcon from '@/assets/PLAY.png'
-import rightArrowIcon from '@/assets/RIGHT_ARROW.png'
-import leftArrowIcon from '@/assets/LEFT_ARROW.png'
-import ReturnIcon from '@/assets/RETURN.png'
 
+const STRINGS = {
+  it: {
+    noSong: 'Nessun brano in riproduzione',
+    returnToList: 'Torna alla lista'
+  },
+  en: {
+    noSong: 'No song playing',
+    returnToList: 'Return to list'
+  }
+}
 
 export default {
   name: "MusicPlayer",
@@ -53,6 +60,10 @@ export default {
       type: Object,
       default: null,
     },
+    currentLang: {
+      type: String,
+      default: 'it'
+    }
   },
   data() {
     return {
@@ -60,17 +71,13 @@ export default {
       duration: 0,
       currentTime: 0,
       intervalId: null,
-      pauseIcon,
-      playIcon,
-      rightArrowIcon,
-      leftArrowIcon,
-      ReturnIcon,
+      isSeeking: false,
     }
   },
-  computed:{
-    currentIcon() {
-      return this.isPlaying ? this.pauseIcon : this.playIcon;
-    },
+  computed: {
+    strings() {
+      return this.currentLang === 'en' ? STRINGS.en : STRINGS.it;
+    }
   },
   watch: {
     currentSong: {
@@ -93,87 +100,85 @@ export default {
         this.isPlaying = true;
         this.currentTime = 0;
 
-        const info = await MediaPlugin.getSongInfo({ path });
-        this.duration = info.duration || 0;
+        try {
+            const info = await MediaPlugin.getSongInfo({ path });
+            this.duration = info.duration || 0;
+        } catch (e) {
+            this.duration = 0;
+        }
 
         this.startProgress();
-      } catch (e) {
-        alert("An Error occured while playing" + e.message);
-      }
+      } catch (e) {}
     },
+
     startProgress() {
       if (this.intervalId) clearInterval(this.intervalId);
       this.intervalId = setInterval(async () => {
+        if (this.isSeeking) return;
+
         try {
           const status = await MediaPlugin.getPlaybackStatus();
           this.currentTime = status.currentTime || 0;
           this.isPlaying = status.isPlaying;
-          if (this.currentTime >= this.duration) {
+          
+          if (this.currentTime >= this.duration && this.duration > 0) {
             this.currentTime = this.duration;
-            await this.stop();
+            this.isPlaying = false;
           }
         } catch {}
-      }, 500);
+      }, 1000);
     },
+
     async stop() {
       if (this.intervalId) clearInterval(this.intervalId);
       this.isPlaying = false;
       this.currentTime = 0;
       this.duration = 0;
-      await MediaPlugin.stop();
+      try {
+        await MediaPlugin.stop();
+      } catch (e) {}
     },
-   async togglePlayPause() {
+
+    async togglePlayPause() {
       try {
         if (this.isPlaying) {
           await MediaPlugin.pause();
           this.isPlaying = false;
         } else {
-          if (this.currentTime >= this.duration) {
-            this.currentTime = 0;
-            await MediaPlugin.seek({ position: 0 });
-            await MediaPlugin.play({ path: this.currentSong.path });
-          } else {
-            try {
-              await MediaPlugin.resume();
-            } catch {
-              await MediaPlugin.play({ path: this.currentSong.path });
-              this.currentTime = 0;
-            }
+          try {
+             await MediaPlugin.resume();
+          } catch {
+             if (this.currentSong && this.currentSong.path) {
+                 await MediaPlugin.play({ path: this.currentSong.path });
+             }
           }
           this.isPlaying = true;
         }
-      } catch (e) {
-        alert("Playback error: " + e.message);
-      }
+      } catch (e) {}
     },
-    async seek() {
+
+    onSeekInput() {
+      this.isSeeking = true;
+    },
+
+    async onSeekChange() {
       const position = Math.floor(this.currentTime);
-
-      if (
-        typeof position !== "number" ||
-        isNaN(position) ||
-        position < 0 ||
-        position > this.duration
-      ) {
-        console.warn("Invalid seek position:", position);
-        return;
-      }
-
       try {
-        await MediaPlugin.seek({ position }); 
-      } catch (e) {
-        console.error("Seek failed:", e.message);
-      }
+        await MediaPlugin.seek({ position });
+      } catch (e) {}
+      
+      setTimeout(() => {
+          this.isSeeking = false;
+      }, 500);
     },
+
     formatTime(seconds) {
-      const m = Math.floor(seconds / 60)
-        .toString()
-        .padStart(2, "0");
-      const s = Math.floor(seconds % 60)
-        .toString()
-        .padStart(2, "0");
+      if (!seconds || isNaN(seconds)) return "00:00";
+      const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+      const s = Math.floor(seconds % 60).toString().padStart(2, "0");
       return `${m}:${s}`;
     },
+
     handleReturnToList() {
       this.stop(); 
       this.$emit('returnToList'); 
@@ -183,7 +188,6 @@ export default {
     if (this.intervalId) clearInterval(this.intervalId);
   },
 }
-
 </script>
 
 <style scoped>
@@ -211,8 +215,8 @@ export default {
 }
 
 @keyframes fromLeftToRight {
-  0% {
-    background: linear-gradient(90deg, #e1e1e1,  #bb00bb, #a382ba);
+  0%, 100% {
+    background: linear-gradient(90deg, #e1e1e1, #bb00bb, #a382ba);
     background-size: 200% 200%;
     background-position: 0% 50%;
     -webkit-background-clip: text;
@@ -223,14 +227,6 @@ export default {
     background: linear-gradient(90deg, #e1e1e1, #bb00bb, #a382ba);
     background-size: 200% 200%;
     background-position: 100% 50%;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: #a382ba 1px 1px 6px;
-  }
-  100% {
-    background: linear-gradient(90deg, #e1e1e1, #bb00bb, #a382ba);
-    background-size: 200% 200%;
-    background-position: 0% 50%;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     text-shadow: #a382ba 1px 1px 6px;
@@ -267,61 +263,11 @@ export default {
   transition: background-color 0.3s ease;
 }
 
-.progress-bar::-webkit-slider-thumb:hover {
-  background:linear-gradient(135deg, #a404b365, #8106be8a);
-}
-
 .time-info {
   display: flex;
   justify-content: space-between;
   font-size: 0.9rem;
   color: #fefefe;
-}
-
-.pause-button {
-  width: 30vw;
-  height: 30vw;
-  max-width: 200px;
-  max-height: 200px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: linear-gradient(135deg, #6f6f6f, #3a3a3a);
-  color: #fefefe;
-  border: none;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.2s ease;
-  user-select: none;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-}
-
-.pause-button:active {
-  background: linear-gradient(135deg, #2c2c2c, #1a1a1a);
-  transform: scale(0.96);
-}
-
-
-.stop-button{
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background-color: #bb0000;
-  color: #fefefe;
-  font-weight: 600;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  user-select: none;
-}
-
-.pause-button-icon{
-  width:30%;
-  height:30%;
-  filter: blur(0.05px);
 }
 
 .controls-row {
@@ -332,51 +278,72 @@ export default {
   width: 100%;
 }
 
-.arrow-button {
-  width: 15vw;
-  height: 15vw;
-  max-width: 80px;
-  max-height: 80px;
+.pause-button {
+  width: 100px; 
+  height: 100px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  background: linear-gradient(135deg, #8a8a8a, #3a3a3a);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  position: relative;
+}
+
+.pause-button:active {
+  transform: scale(0.92);
+  background: linear-gradient(135deg, #3a3a3a, #1a1a1a);
+}
+
+.pause-button i {
+  font-size: 3rem; 
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: v-bind("!isPlaying ? '6px' : '0px'"); 
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+.arrow-button {
+  width: 65px;
+  height: 65px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(135deg, #6f6f6f, #3a3a3a);
   color: #fefefe;
   border: none;
-  font-size: 1rem;
-  user-select: none;
+  cursor: pointer;
   opacity: 0.6;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-  transition: background 0.3s ease, transform 0.2s ease;
+  transition: all 0.2s ease;
 }
 
-.arrow-button:active {
-  background: linear-gradient(135deg, #2c2c2c, #1a1a1a);
-  transform: scale(0.95);
-}
-
-.arrow-icon {
-  width: 50%;
-  height: 50%;
-  object-fit: contain;
+.arrow-button i {
+  font-size: 1.8rem;
   filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.4));
 }
 
 .arrow-button:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.3;
 }
+
 .return-button {
   width: 60%;
   height: 60px; 
-  padding: 0 1.5rem;
+  margin-top: 1rem;
   border: none;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.3s ease, transform 0.2s ease;
+  transition: all 0.2s ease;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -387,25 +354,18 @@ export default {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   color: #fff;
-  user-select: none;
 }
 
 .return-button:hover {
   background: rgba(255, 255, 255, 0.25);
-  transform: translateY(-1px);
 }
 
 .return-button:active {
-  background: rgba(255, 255, 255, 0.1);
   transform: scale(0.98);
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.return-icon {
-  width: 24px;
-  height: 35px;
-  object-fit: contain;
-  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.3));
+.return-button i {
+  font-size: 1.4rem;
 }
-
-
 </style>
