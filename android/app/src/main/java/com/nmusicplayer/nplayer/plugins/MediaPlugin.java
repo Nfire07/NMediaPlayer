@@ -774,88 +774,109 @@ public class MediaPlugin extends Plugin {
         ContentResolver resolver = context.getContentResolver();
 
         String extension = "";
-        int i = path.lastIndexOf('.');
-        if (i > 0) {
-            extension = path.substring(i);
+        int dotIndex = path.lastIndexOf('.');
+        if (dotIndex > 0) {
+            extension = path.substring(dotIndex);
         }
-        
+
         if (newName.toLowerCase().endsWith(extension.toLowerCase())) {
             newName = newName.substring(0, newName.length() - extension.length());
         }
-        
-        String finalFileName = newName + extension;
-        // TRANSLATED: Tentativo rinomina -> Attempting rename
-        Log.d("MediaPlugin", "Attempting rename: " + path + " -> " + finalFileName);
+
+        final String finalFileName = newName + extension;
+        final String cleanTitle = newName;
+        Log.d(TAG, "Attempting rename: " + path + " -> " + finalFileName);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 Uri collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL);
-                String selection = MediaStore.Audio.Media.DATA + "=?";
-                String[] selectionArgs = new String[]{ path };
 
-                Long id = null;
-                
-                try (Cursor cursor = resolver.query(collection, 
-                        new String[]{MediaStore.Audio.Media._ID}, 
-                        selection, selectionArgs, null)) {
-                    
-                    if (cursor != null && cursor.moveToFirst()) {
-                        id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID));
-                    }
-                }
-
+                Long id = findMediaStoreId(resolver, collection, path);
                 if (id == null) {
-                    call.reject("File not found in MediaStore. Try refreshing the list.");
+                    id = findMediaStoreIdByDisplayName(resolver, collection, new File(path).getName());
+                }
+                if (id == null) {
+                    call.reject("File not found in MediaStore. Try rescanning media.");
                     return;
                 }
 
                 Uri itemUri = ContentUris.withAppendedId(collection, id);
-                
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.Audio.Media.DISPLAY_NAME, finalFileName);
-                values.put(MediaStore.Audio.Media.TITLE, newName); 
-                values.put(MediaStore.Audio.Media.IS_PENDING, 1);
-                
-                int rowsUpdated = resolver.update(itemUri, values, null, null);
-                
-                values.clear();
-                values.put(MediaStore.Audio.Media.IS_PENDING, 0);
-                resolver.update(itemUri, values, null, null);
+
+                File parentDir = new File(path).getParentFile();
+                if (parentDir != null) {
+                    File destFile = new File(parentDir, finalFileName);
+                    if (destFile.exists() && !destFile.getAbsolutePath().equals(path)) {
+                        call.reject("A file with this name already exists");
+                        return;
+                    }
+                }
+
+                ContentValues pendingValues = new ContentValues();
+                pendingValues.put(MediaStore.Audio.Media.IS_PENDING, 1);
+                resolver.update(itemUri, pendingValues, null, null);
+
+                ContentValues renameValues = new ContentValues();
+                renameValues.put(MediaStore.Audio.Media.DISPLAY_NAME, finalFileName);
+                renameValues.put(MediaStore.Audio.Media.TITLE, cleanTitle);
+                int rowsUpdated = resolver.update(itemUri, renameValues, null, null);
+
+                ContentValues doneValues = new ContentValues();
+                doneValues.put(MediaStore.Audio.Media.IS_PENDING, 0);
+                resolver.update(itemUri, doneValues, null, null);
 
                 if (rowsUpdated > 0) {
-                    String newPath = null;
-                    try (Cursor cursor = resolver.query(itemUri, new String[]{MediaStore.Audio.Media.DATA}, null, null, null)) {
-                        if (cursor != null && cursor.moveToFirst()) {
-                            newPath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA));
+                    String newPath = parentDir != null ? new File(parentDir, finalFileName).getAbsolutePath() : null;
+
+                    try (Cursor c = resolver.query(itemUri,
+                            new String[]{MediaStore.Audio.Media.DATA}, null, null, null)) {
+                        if (c != null && c.moveToFirst()) {
+                            String msPath = c.getString(0);
+                            if (msPath != null && !msPath.isEmpty()) {
+                                newPath = msPath;
+                            }
                         }
-                    }
-                    
+                    } catch (Exception ignored) {}
+
                     if (newPath == null) {
-                         File oldFile = new File(path);
-                         newPath = new File(oldFile.getParent(), finalFileName).getAbsolutePath();
+                        call.reject("Rename succeeded but could not determine new path");
+                        return;
                     }
 
-                    updateSongInPlaylists(path, newPath, newName);
+                    File physicalOld = new File(path);
+                    File physicalNew = new File(newPath);
+                    if (physicalOld.exists() && !physicalNew.exists()) {
+                        boolean moved = physicalOld.renameTo(physicalNew);
+                        if (!moved) {
+                            call.reject("MediaStore updated but physical file rename failed.");
+                            return;
+                        }
+                        MediaScannerConnection.scanFile(context, new String[]{ newPath }, null, null);
+                    }
+
+                    updateSongInPlaylists(path, newPath, cleanTitle);
 
                     JSObject result = new JSObject();
                     result.put("success", true);
                     result.put("newPath", newPath);
                     call.resolve(result);
                 } else {
-                    call.reject("Update failed. The file might be read-only.");
+                    ContentValues rollback = new ContentValues();
+                    rollback.put(MediaStore.Audio.Media.IS_PENDING, 0);
+                    resolver.update(itemUri, rollback, null, null);
+                    call.reject("Rename failed. The file may be read-only or owned by another app.");
                 }
 
             } catch (android.app.RecoverableSecurityException e) {
-                call.reject("Permission denied. Android requires explicit permission to rename files not created by this app.");
+                call.reject("Permission denied. This file was not created by this app.");
             } catch (Exception e) {
-                e.printStackTrace();
+                Log.e(TAG, "Error renaming song", e);
                 call.reject("Error renaming: " + e.getMessage());
             }
-        } 
-        else {
+
+        } else {
             File oldFile = new File(path);
             if (!oldFile.exists()) {
-                call.reject("File path does not exist on disk");
+                call.reject("File not found on disk");
                 return;
             }
 
@@ -866,31 +887,31 @@ public class MediaPlugin extends Plugin {
             }
 
             boolean renamed = oldFile.renameTo(newFile);
-
             if (renamed) {
                 try {
-                    resolver.delete(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-                            MediaStore.Audio.Media.DATA + "=?",
-                            new String[]{ path });
-
-                    MediaScannerConnection.scanFile(context,
-                            new String[]{ newFile.getAbsolutePath() },
-                            null, null);
-                            
+                    resolver.delete(
+                        MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                        MediaStore.Audio.Media.DATA + "=?",
+                        new String[]{ path }
+                    );
+                    MediaScannerConnection.scanFile(
+                        context,
+                        new String[]{ newFile.getAbsolutePath() },
+                        null, null
+                    );
                 } catch (Exception e) {
-                    Log.w("MediaPlugin", "Error updating legacy MediaStore", e);
+                    Log.w(TAG, "Error updating legacy MediaStore after rename", e);
                 }
 
                 String newPath = newFile.getAbsolutePath();
-
-                updateSongInPlaylists(path, newPath, newName);
+                updateSongInPlaylists(path, newPath, cleanTitle);
 
                 JSObject result = new JSObject();
                 result.put("success", true);
                 result.put("newPath", newPath);
                 call.resolve(result);
             } else {
-                call.reject("Failed to rename file (OS level)");
+                call.reject("Failed to rename file. Check storage permissions.");
             }
         }
     }
@@ -1041,5 +1062,33 @@ public class MediaPlugin extends Plugin {
                 }
             }
         }
+    }
+
+    private Long findMediaStoreId(ContentResolver resolver, Uri collection, String path) {
+        try (Cursor cursor = resolver.query(collection,
+                new String[]{ MediaStore.Audio.Media._ID },
+                MediaStore.Audio.Media.DATA + "=?",
+                new String[]{ path }, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                return cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "findMediaStoreId failed", e);
+        }
+        return null;
+    }
+
+    private Long findMediaStoreIdByDisplayName(ContentResolver resolver, Uri collection, String displayName) {
+        try (Cursor cursor = resolver.query(collection,
+                new String[]{ MediaStore.Audio.Media._ID },
+                MediaStore.Audio.Media.DISPLAY_NAME + "=?",
+                new String[]{ displayName }, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                return cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "findMediaStoreIdByDisplayName failed", e);
+        }
+        return null;
     }
 }

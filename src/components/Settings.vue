@@ -1,4 +1,5 @@
 <script>
+import { MediaPlugin } from '@/plugins/MediaPlugin'
 const STRINGS = {
   it: {
     title: 'Impostazioni',
@@ -6,7 +7,8 @@ const STRINGS = {
     currentLang: 'Italiano',
     theme: 'Tema',
     currentTheme: 'Modo Scuro',
-    back: 'Torna al menu'
+    back: 'Torna al menu',
+    stopPlayback: 'Ferma Servizio',
   },
   en: {
     title: 'Settings',
@@ -14,7 +16,8 @@ const STRINGS = {
     currentLang: 'English',
     theme: 'Theme',
     currentTheme: 'Dark Mode',
-    back: 'Return to menu'
+    back: 'Return to menu',
+    stopPlayback: 'Stop Service'
   }
 }
 
@@ -45,7 +48,6 @@ export default {
     },
 
     localEnglish(newValue) {
-      // FIX: Emetto la stringa 'en' o 'it', non il booleano
       this.$emit('toggle-lang', newValue ? 'en' : 'it');
     },
 
@@ -56,7 +58,23 @@ export default {
       this.localEnglish = val === 'en';
     }
   },
-  
+  method:{
+    async stopPlayback() {
+      try {
+        if (MediaPlugin.stop) await MediaPlugin.stop()
+      } catch (e) {}
+
+      try {
+        await ForegroundService.stopForegroundService()
+      } catch (e) {}
+
+      this.currentPlayingPath = null
+      this.currentSong = null
+    },
+    async stopService(){
+      await this.stopPlayback();
+    }
+  },
   computed: {
     strings() {
         return this.localEnglish ? STRINGS.en : STRINGS.it;
@@ -96,6 +114,12 @@ export default {
                         <i class="bi bi-moon-stars-fill icon-moon"></i>
                     </span>
                 </label>
+            </div>
+            <div class="setting-item" @click="stopService" style="cursor:pointer;">
+              <div class="setting-info">
+                <span class="setting-label">{{ strings.stopPlayback }}</span>
+              </div>
+              <i class="bi bi-stop-circle" style="font-size: 1.5rem;"></i>
             </div>
 
         </div>

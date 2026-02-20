@@ -8,3 +8,6 @@ Then you can simply run the application by double clicking on build.bat or by ty
 ```
 on a cmd opened in the root project directory.
 then run the application in android studio. For every update sync the changes with android studio by rebuilding the application entirely
+
+
+**MEMO** NPlayer/android/app/release contains .aab
