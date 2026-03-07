@@ -10,4 +10,4 @@ on a cmd opened in the root project directory.
 then run the application in android studio. For every update sync the changes with android studio by rebuilding the application entirely
 
 
-**MEMO** NPlayer/android/app/release contains .aab
+**MEMO** NPlayer/android/app/release contains .apk

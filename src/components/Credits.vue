@@ -57,7 +57,7 @@ export default {
                     </div>
                     <div class="meta-row">
                         <span class="meta-label">{{ strings.date }}:</span>
-                        <span class="meta-value">Feb 2026</span>
+                        <span class="meta-value">Mar 2026</span>
                     </div>
                     <div class="meta-row">
                         <span class="meta-label">{{ strings.license }}:</span>
